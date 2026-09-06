@@ -138,11 +138,6 @@ function parseIpv6FirstByte(ip: string): number | null {
 
 const apiWindow = { startedAt: 0, count: 0 };
 
-export function resetGeoipApiWindow(): void {
-  apiWindow.startedAt = 0;
-  apiWindow.count = 0;
-}
-
 export function tryConsumeGeoipApiSlot(now = Date.now()): boolean {
   if (now - apiWindow.startedAt >= 60_000) {
     apiWindow.startedAt = now;

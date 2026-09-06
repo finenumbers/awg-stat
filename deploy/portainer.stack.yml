@@ -54,7 +54,6 @@ services:
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
       PORT: 8088
       NODE_ENV: production
-      TRUST_PROXY: ${TRUST_PROXY:-1}
       GEOIP_API_URL: ${GEOIP_API_URL:-}
       GEOIP_API_KEY: ${GEOIP_API_KEY:-}
     healthcheck:

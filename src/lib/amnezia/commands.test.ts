@@ -5,7 +5,6 @@ import {
   assertReadOnlyCommand,
   awgPollCommand,
   dockerInspectCommand,
-  dockerInspectRunningCommand,
   dockerPsAllCommand,
   dockerPsCommand,
   isAllowedContainerName,
@@ -58,10 +57,15 @@ test("rejects write and secret commands", () => {
   assert.equal(isForbiddenCommand("docker exec x awg show all header-protection-key"), true);
   assert.doesNotThrow(() => assertReadOnlyCommand(dockerPsCommand("docker")));
   assert.doesNotThrow(() => assertReadOnlyCommand(dockerPsAllCommand("sudo -n docker")));
-  assert.doesNotThrow(() => assertReadOnlyCommand(dockerInspectRunningCommand("docker", "amnezia-awg2")));
+  assert.doesNotThrow(() => assertReadOnlyCommand(dockerInspectCommand("docker", "amnezia-awg2")));
 });
 
 test("rejects unsafe container names in builders", () => {
   assert.throws(() => awgPollCommand("docker", "amnezia-awg2; reboot"));
-  assert.throws(() => dockerInspectRunningCommand("docker", "../etc"));
+  assert.throws(() => dockerInspectCommand("docker", "../etc"));
+});
+
+test("exporter-style dump command stays forbidden", () => {
+  assert.equal(isForbiddenCommand("awg show all dump"), true);
+  assert.equal(isForbiddenCommand("docker exec amnezia-awg2 bash -c 'awg show all dump'"), true);
 });

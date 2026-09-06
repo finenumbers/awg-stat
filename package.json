@@ -1,6 +1,6 @@
 {
   "name": "gate",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "description": "Read-only monitoring and traffic statistics for existing AmneziaVPN / AmneziaWG 3.1 servers",
   "scripts": {
@@ -15,19 +15,16 @@
     "poller": "tsx src/worker/main.ts"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.0.1",
     "@prisma/client": "^6.8.2",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-slot": "^1.2.3",
     "better-auth": "^1.7.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.511.0",
     "next": "^15.3.3",
     "p-queue": "^8.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-hook-form": "^7.57.0",
     "ssh2": "^1.16.0",
     "tailwind-merge": "^3.3.0",
     "zod": "^3.25.51"

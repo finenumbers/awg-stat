@@ -124,12 +124,9 @@ model PollerLease {
 }
 
 model AppSettings {
-  id                 String   @id @default("default")
-  pollIntervalSec    Int      @default(15)
-  onlineThresholdSec Int      @default(60)
-  rawRetentionDays   Int      @default(30)
-  hourlyRetentionDays Int     @default(365)
-  updatedAt          DateTime @updatedAt
+  id                  String   @id @default("default")
+  hourlyRetentionDays Int      @default(365)
+  updatedAt           DateTime @updatedAt
 
   @@map("app_settings")
 }
@@ -144,7 +141,6 @@ model Server {
   sshHostKeyFingerprint String?
   sshHostKeyVerified    Boolean      @default(false)
   dockerAccess          DockerAccess @default(DOCKER)
-  pollIntervalSec       Int?
   lastPollAt            DateTime?
   lastPollError         String?
   createdAt             DateTime     @default(now())

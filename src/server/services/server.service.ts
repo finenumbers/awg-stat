@@ -170,7 +170,6 @@ export async function createAndOnboardServer(input: ServerInput, ssh: SshAuthInp
       port: input.port,
       sshUsername: ssh.username,
       sshAuthMethod: ssh.authMethod as AuthMethod,
-      pollIntervalSec: input.pollIntervalSec,
     },
   });
 

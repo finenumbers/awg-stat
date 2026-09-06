@@ -2,13 +2,12 @@ import { db } from "@/lib/db";
 import { getSshSessionRegistry } from "@/lib/ssh/session-registry";
 import { POLL_DEADLINE_MS, POLL_INTERVAL_SEC, POLLER_LEASE_TTL_SEC } from "@/server/poll-defaults";
 import { clearAllQueues, pruneQueues, queueFor } from "@/server/poller-queues";
-import { getPollerEpoch, getPollerState, isPollerStopping, pollerRuntime } from "@/server/poller-runtime";
+import { getPollerEpoch, getPollerState, pollerRuntime } from "@/server/poller-runtime";
 import { pollServer, pruneOldSamples } from "@/server/services/collector.service";
 import { warnIfGeoipDisabled } from "@/server/services/geoip.service";
 import { ensureAppSettings } from "@/server/services/setup.service";
 
-export { getPollerEpoch, getPollerState, isPollerStopping };
-export { releaseServerRuntime } from "@/server/poller-queues";
+export { getPollerState };
 
 async function ensureLeaseRow(): Promise<void> {
   await db.pollerLease.upsert({

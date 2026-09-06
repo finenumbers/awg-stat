@@ -1,5 +1,4 @@
 export const AWG_CONTAINER_NAME = /^amnezia-awg[0-9a-z-]*$/;
-export const TARGET_CONTAINER = "amnezia-awg2";
 export const CLIENTS_TABLE_PATH = "/opt/amnezia/awg/clientsTable";
 
 const FORBIDDEN = [
@@ -81,10 +80,6 @@ export function dockerInspectCommand(prefix: DockerPrefix, container: string): s
     "{{.State.Running}}\t{{.State.Status}}\t{{.State.StartedAt}}\t{{.RestartCount}}\t" +
     "{{range $p, $b := .NetworkSettings.Ports}}{{$p}}={{if $b}}{{(index $b 0).HostPort}}{{end}} {{end}}";
   return withDocker(prefix, `inspect --format '${format}' ${shellSingleQuote(name)}`);
-}
-
-export function dockerInspectRunningCommand(prefix: DockerPrefix, container: string): string {
-  return dockerInspectCommand(prefix, container);
 }
 
 const REQUIRED_SELECTORS = [

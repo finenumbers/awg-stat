@@ -48,7 +48,6 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
       NODE_ENV: production
-      TRUST_PROXY: ${TRUST_PROXY:-}
       GEOIP_API_URL: ${GEOIP_API_URL:-}
       GEOIP_API_KEY: ${GEOIP_API_KEY:-}
     healthcheck:

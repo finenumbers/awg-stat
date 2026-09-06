@@ -15,7 +15,6 @@ export async function createServerAction(formData: FormData): Promise<ActionResu
     name: formData.get("name"),
     host: formData.get("host"),
     port: formData.get("port"),
-    pollIntervalSec: formData.get("pollIntervalSec") || undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Проверьте поля" };

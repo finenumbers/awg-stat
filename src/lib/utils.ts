@@ -174,10 +174,6 @@ export function formatUptime(startedAt: Date, now = new Date()): string {
   return remHours > 0 ? `${days} дн ${remHours} ч` : `${days} дн`;
 }
 
-export function awgVersionLabel(version: AwgVersionValue): string {
-  return activeAwgVersionLabel(version) ?? "версия не определена";
-}
-
 export type DisplayedEndpoint = {
   host: string;
   port: string | null;
