@@ -1,0 +1,17 @@
+# Production overlay: do not publish Postgres or the app on 0.0.0.0.
+# Attach the app to the existing NPM network named "proxy".
+
+services:
+  postgres:
+    ports: []
+
+  app:
+    ports: []
+    networks:
+      - default
+      - npm_proxy
+
+networks:
+  npm_proxy:
+    external: true
+    name: proxy

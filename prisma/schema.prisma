@@ -1,0 +1,293 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  auditEvents   AuditEvent[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  issuer                String
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([issuer, accountId])
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+enum AuthMethod {
+  PASSWORD
+  PRIVATE_KEY
+  PRIVATE_KEY_WITH_PASSPHRASE
+}
+
+enum DockerAccess {
+  DOCKER
+  SUDO_N_DOCKER
+}
+
+enum AwgVersion {
+  V2
+  V30
+  V31
+  UNKNOWN
+}
+
+enum PeerStatus {
+  ACTIVE
+  REMOVED
+}
+
+enum PeerPresenceEventKind {
+  ONLINE
+  OFFLINE
+}
+
+enum AuditAction {
+  SETUP_COMPLETED
+  LOGIN
+  LOGOUT
+  IDENTITY_CREATED
+  IDENTITY_UPDATED
+  IDENTITY_DELETED
+  SERVER_CREATED
+  SERVER_UPDATED
+  SERVER_DELETED
+  SETTINGS_UPDATED
+  PEER_ALIAS_UPDATED
+  POLL_FAILED
+}
+
+model PollerLease {
+  id        String   @id @default("default")
+  ownerId   String?  @map("owner_id")
+  expiresAt DateTime @map("expires_at")
+  epoch     Int      @default(0)
+
+  @@map("poller_lease")
+}
+
+model AppSettings {
+  id                 String   @id @default("default")
+  pollIntervalSec    Int      @default(15)
+  onlineThresholdSec Int      @default(60)
+  rawRetentionDays   Int      @default(30)
+  hourlyRetentionDays Int     @default(365)
+  updatedAt          DateTime @updatedAt
+
+  @@map("app_settings")
+}
+
+model Server {
+  id                    String       @id @default(cuid())
+  name                  String
+  host                  String
+  port                  Int          @default(22)
+  sshUsername           String
+  sshAuthMethod         AuthMethod
+  sshHostKeyFingerprint String?
+  sshHostKeyVerified    Boolean      @default(false)
+  dockerAccess          DockerAccess @default(DOCKER)
+  pollIntervalSec       Int?
+  lastPollAt            DateTime?
+  lastPollError         String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  credential    ServerCredential?
+  vpnInstance   VpnInstance?
+  serverSamples ServerSample[]
+
+  @@unique([host, port])
+  @@map("server")
+}
+
+model ServerCredential {
+  id            String   @id @default(cuid())
+  serverId      String   @unique
+  server        Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  encryptedData String
+  iv            String
+  authTag       String
+  keyVersion    Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("server_credential")
+}
+
+model VpnInstance {
+  id              String     @id @default(cuid())
+  serverId        String     @unique
+  server          Server     @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  containerName   String
+  interfaceName   String     @default("awg0")
+  awgVersion      AwgVersion @default(UNKNOWN)
+  listenPort      Int?
+  serverPublicKey String?
+  hostListenPort  Int?
+  containerStatus String?
+  containerStartedAt DateTime?
+  containerRestartCount Int?
+  running         Boolean    @default(false)
+  lastSeenAt      DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  peers Peer[]
+
+  @@map("vpn_instance")
+}
+
+model Peer {
+  id            String     @id @default(cuid())
+  vpnInstanceId String
+  vpnInstance   VpnInstance @relation(fields: [vpnInstanceId], references: [id], onDelete: Cascade)
+  publicKey     String
+  vpnName       String?
+  allowedIps    String?
+  endpoint      String?
+  status        PeerStatus @default(ACTIVE)
+  firstSeenAt   DateTime   @default(now())
+  lastSeenAt    DateTime?
+  removedAt     DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  samples         PeerSample[]
+  hourlySamples   PeerHourlySample[]
+  presenceEvents  PeerPresenceEvent[]
+
+  @@unique([vpnInstanceId, publicKey])
+  @@index([vpnInstanceId, status])
+  @@map("peer")
+}
+
+model PeerPresenceEvent {
+  id         String                 @id @default(cuid())
+  peerId     String
+  peer       Peer                   @relation(fields: [peerId], references: [id], onDelete: Cascade)
+  kind       PeerPresenceEventKind
+  occurredAt DateTime
+  endpoint   String?
+
+  @@unique([peerId, occurredAt])
+  @@index([occurredAt])
+  @@map("peer_presence_event")
+}
+
+model PeerSample {
+  id            String   @id @default(cuid())
+  peerId        String
+  peer          Peer     @relation(fields: [peerId], references: [id], onDelete: Cascade)
+  capturedAt    DateTime @default(now())
+  rxBytes       BigInt
+  txBytes       BigInt
+  rxDelta       BigInt
+  txDelta       BigInt
+  handshakeUnix BigInt
+  online        Boolean
+
+  @@index([peerId, capturedAt(sort: Desc)])
+  @@map("peer_sample")
+}
+
+model PeerHourlySample {
+  id         String   @id @default(cuid())
+  peerId     String
+  peer       Peer     @relation(fields: [peerId], references: [id], onDelete: Cascade)
+  hourStart  DateTime
+  rxDelta    BigInt   @default(0)
+  txDelta    BigInt   @default(0)
+  onlineSecs Int      @default(0)
+  samples    Int      @default(0)
+
+  @@unique([peerId, hourStart])
+  @@index([peerId, hourStart(sort: Desc)])
+  @@map("peer_hourly_sample")
+}
+
+model ServerSample {
+  id          String   @id @default(cuid())
+  serverId    String
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  capturedAt  DateTime @default(now())
+  running     Boolean
+  peerCount   Int
+  onlineCount Int
+  rxDelta     BigInt
+  txDelta     BigInt
+
+  @@index([serverId, capturedAt(sort: Desc)])
+  @@map("server_sample")
+}
+
+model AuditEvent {
+  id         String      @id @default(cuid())
+  userId     String?
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     AuditAction
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_event")
+}

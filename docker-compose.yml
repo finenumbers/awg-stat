@@ -1,0 +1,93 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gate-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gate}
+      POSTGRES_DB: gate
+    volumes:
+      - gate_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gate -d gate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5435}:5432"
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    container_name: gate-migrate
+    environment:
+      DATABASE_URL: postgresql://gate:${POSTGRES_PASSWORD:-gate}@postgres:5432/gate?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: gate-app
+    restart: unless-stopped
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8088}:8088"
+    environment:
+      DATABASE_URL: postgresql://gate:${POSTGRES_PASSWORD:-gate}@postgres:5432/gate?schema=public
+      PORT: 8088
+      APP_URL: ${APP_URL:-http://localhost:8088}
+      BETTER_AUTH_URL: ${APP_URL:-http://localhost:8088}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
+      NODE_ENV: production
+      TRUST_PROXY: ${TRUST_PROXY:-}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:8088/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  poller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: poller
+    container_name: gate-poller
+    restart: unless-stopped
+    stop_grace_period: 20s
+    environment:
+      DATABASE_URL: postgresql://gate:${POSTGRES_PASSWORD:-gate}@postgres:5432/gate?schema=public
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "node", "/app/poller-health.cjs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  gate_postgres_data:

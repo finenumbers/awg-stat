@@ -1,0 +1,104 @@
+# Portainer Compose stack (standalone Docker, not Swarm) behind existing NPM.
+# NPM is not part of this stack. Its Docker network is named "proxy".
+#
+# Deploy: Portainer → Stacks → Add stack → Repository
+#   https://github.com/finenumbers/awg-stat
+#   Compose path: deploy/portainer.stack.yml
+#   Branch: main
+# Enable "Re-pull image" on update. Images are always :latest.
+#
+# After the first GHCR publish, set the three packages to Public.
+# NPM Proxy Host: http://gate-app:8088, WebSockets ON, Force SSL.
+# APP_URL must be the public HTTPS URL without a trailing slash.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gate-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: gate
+    volumes:
+      - gate_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gate -d gate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  migrate:
+    image: ghcr.io/finenumbers/awg-stat-migrate:latest
+    pull_policy: always
+    container_name: gate-migrate
+    environment:
+      DATABASE_URL: postgresql://gate:${POSTGRES_PASSWORD}@postgres:5432/gate?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    image: ghcr.io/finenumbers/awg-stat:latest
+    pull_policy: always
+    container_name: gate-app
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://gate:${POSTGRES_PASSWORD}@postgres:5432/gate?schema=public
+      APP_URL: ${APP_URL:?APP_URL is required}
+      BETTER_AUTH_URL: ${APP_URL:?APP_URL is required}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
+      PORT: 8088
+      NODE_ENV: production
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:8088/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - default
+      - npm_proxy
+
+  poller:
+    image: ghcr.io/finenumbers/awg-stat-poller:latest
+    pull_policy: always
+    container_name: gate-poller
+    restart: unless-stopped
+    stop_grace_period: 20s
+    environment:
+      DATABASE_URL: postgresql://gate:${POSTGRES_PASSWORD}@postgres:5432/gate?schema=public
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "node", "/app/poller-health.cjs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+networks:
+  npm_proxy:
+    external: true
+    name: proxy
+
+volumes:
+  gate_postgres_data:
