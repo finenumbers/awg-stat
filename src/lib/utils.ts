@@ -5,6 +5,12 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function formatDbSizeGb(value: bigint | number): string {
+  const n = typeof value === "bigint" ? Number(value) : value;
+  const gb = !Number.isFinite(n) || n < 0 ? 0 : n / 1024 ** 3;
+  return `${gb.toFixed(2).replace(".", ",")} Gb`;
+}
+
 export function formatBytes(value: bigint | number): string {
   const n = typeof value === "bigint" ? Number(value) : value;
   if (!Number.isFinite(n) || n < 0) {

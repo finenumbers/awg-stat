@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
 import { signOut } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -18,8 +17,8 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
   const router = useRouter();
 
   return (
-    <aside className="sticky top-0 flex h-svh w-60 shrink-0 flex-col self-start border-r bg-card px-4 py-6">
-      <Link href="/" className="block px-1">
+    <aside className="sticky top-0 flex h-svh w-[200px] shrink-0 flex-col self-start border-r bg-card px-4 py-6">
+      <Link href="/" className="flex justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/brand/fine-numbers.png"
@@ -38,10 +37,8 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
               href={href}
               title={server.name}
               className={cn(
-                "block truncate rounded-md px-3 py-2 text-sm",
-                isServerActive(pathname, href)
-                  ? "bg-secondary font-medium"
-                  : "text-muted-foreground hover:bg-accent",
+                "block truncate rounded-md px-3 py-2 text-sm font-bold text-black",
+                isServerActive(pathname, href) ? "bg-secondary" : "hover:bg-accent",
               )}
             >
               {server.name}
@@ -59,9 +56,9 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
         >
           Добавить сервер
         </Link>
-        <Button
-          variant="ghost"
-          className="justify-start"
+        <button
+          type="button"
+          className="rounded-md px-3 py-2 text-left text-sm text-muted-foreground hover:bg-accent"
           onClick={async () => {
             await signOut();
             router.push("/login");
@@ -69,7 +66,7 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
           }}
         >
           Выйти
-        </Button>
+        </button>
       </div>
     </aside>
   );

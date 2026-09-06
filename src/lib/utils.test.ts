@@ -8,6 +8,7 @@ import {
   displayPeerEndpoint,
   displayPeerInternalIp,
   formatDateTime,
+  formatDbSizeGb,
   formatUptime,
 } from "./utils";
 
@@ -61,6 +62,14 @@ test("formatUptime uses coarse Russian units", () => {
   assert.equal(formatUptime(new Date("2026-09-06T11:59:40.000Z"), now), "20 с");
   assert.equal(formatUptime(new Date("2026-09-06T10:00:00.000Z"), now), "2 ч");
   assert.equal(formatUptime(new Date("2026-09-04T10:00:00.000Z"), now), "2 дн 2 ч");
+});
+
+test("formatDbSizeGb always uses two decimals, a comma, and Gb", () => {
+  assert.equal(formatDbSizeGb(0), "0,00 Gb");
+  assert.equal(formatDbSizeGb(-1), "0,00 Gb");
+  assert.equal(formatDbSizeGb(Number.NaN), "0,00 Gb");
+  assert.equal(formatDbSizeGb(1024 ** 3), "1,00 Gb");
+  assert.equal(formatDbSizeGb(Math.round(0.12 * 1024 ** 3)), "0,12 Gb");
 });
 
 test("formatDateTime labels the timestamp as UTC", () => {

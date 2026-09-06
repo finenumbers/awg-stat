@@ -5,17 +5,21 @@ import { Sparkline } from "@/components/charts/traffic-chart";
 import { DeletionNotice } from "@/components/servers/deletion-notice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { serverPollBadge } from "@/lib/presence";
-import { activeAwgVersionLabel, formatBytes, formatDateTime } from "@/lib/utils";
+import { activeAwgVersionLabel, formatBytes, formatDateTime, formatDbSizeGb } from "@/lib/utils";
 import { ONLINE_THRESHOLD_SEC, POLL_INTERVAL_SEC } from "@/server/poll-defaults";
+import { getDatabaseSizeBytes } from "@/server/services/database.service";
 import { listServers } from "@/server/services/server.service";
 
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  const servers = await listServers();
+  const [servers, databaseSizeBytes] = await Promise.all([listServers(), getDatabaseSizeBytes()]);
   return (
     <main className="w-full space-y-8 p-8">
-      <h1 className="text-2xl font-semibold tracking-tight">Мониторинг серверов AmneziaVPN</h1>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Мониторинг серверов AmneziaVPN</h1>
+        <p className="ml-auto text-sm text-muted-foreground">Объем БД: {formatDbSizeGb(databaseSizeBytes)}</p>
+      </div>
 
       <Suspense fallback={null}>
         <DeletionNotice />
