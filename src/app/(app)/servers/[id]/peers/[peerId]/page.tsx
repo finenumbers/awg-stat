@@ -108,13 +108,8 @@ export default async function PeerPage({
           </Card>
         }
         windows={windows}
-        rxLabel="От пира"
-        txLabel="К пиру"
-        fromLabel="от пира"
-        toLabel="к пиру"
         chartTitle="Трафик пира"
         lastPollLabel={lastPollLabel}
-        chartScope="peer"
         protocolScale="poll"
       />
 

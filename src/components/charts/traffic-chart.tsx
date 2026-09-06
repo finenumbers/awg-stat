@@ -3,12 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { isProtocolTraffic } from "@/lib/presence";
+import { RX_COLOR, TX_COLOR } from "@/lib/traffic-colors";
 import { formatBytes, formatChartTime } from "@/lib/utils";
 
 export type TrafficPoint = { t: number; rx: number; tx: number };
-
-const RX_COLOR = "#0f766e";
-const TX_COLOR = "#4338ca";
 
 function yTicks(max: number): number[] {
   const nice = [1, 2, 5, 10, 20, 50, 100, 200, 500];
@@ -26,8 +24,8 @@ function yTicks(max: number): number[] {
 export function TrafficChart({
   points,
   height = 260,
-  rxLabel = "От пиров",
-  txLabel = "К пирам",
+  rxLabel = "Исходящий",
+  txLabel = "Входящий",
   unitLabel = "За опрос",
   emptyTitle,
   emptyHint,

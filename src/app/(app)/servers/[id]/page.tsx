@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { Sparkline } from "@/components/charts/traffic-chart";
 import { TrafficWindows } from "@/components/charts/traffic-windows";
+import { WindowTrafficValues } from "@/components/charts/window-traffic";
 import { DeleteServerDialog } from "@/components/servers/delete-server-dialog";
 import { ServerSettingsDialog } from "@/components/servers/server-settings-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +15,6 @@ import {
   formatDateTime,
   formatRelativeHandshake,
   formatUptime,
-  formatWindowTraffic,
 } from "@/lib/utils";
 import { getServerDetail, peersTrafficTotals, serverTrafficWindows } from "@/server/services/server.service";
 
@@ -42,7 +42,6 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
     peersTrafficTotals(peers.map((peer) => peer.id)),
     serverTrafficWindows(server.id),
   ]);
-  const traffic24h = [...byPeer.values()].map((item) => item["24h"]);
   const latest = server.serverSamples[0];
   const version = activeAwgVersionLabel(server.vpnInstance?.awgVersion);
   const pollBadge = serverPollBadge({
@@ -57,10 +56,6 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
     : server.lastPollAt
       ? formatDateTime(server.lastPollAt)
       : null;
-  const maxPeerDay = traffic24h.reduce((max, item) => {
-    const total = Number(item.rx + item.tx);
-    return total > max ? total : max;
-  }, 1);
 
   return (
     <main className="w-full space-y-6 p-8">
@@ -116,13 +111,8 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
           </Card>
         }
         windows={windows}
-        rxLabel="От пиров"
-        txLabel="К пирам"
-        fromLabel="от пиров"
-        toLabel="к пирам"
         chartTitle="Трафик сервера"
         lastPollLabel={lastPollLabel}
-        chartScope="server"
       />
 
       <Card>
@@ -141,7 +131,6 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
                 const window24h = peerTraffic?.["24h"] ?? { rx: 0n, tx: 0n };
                 const sample = peer.samples[0];
                 const spark = [...peer.samples].reverse().map((item) => Number(item.rxDelta + item.txDelta));
-                const dayTotal = Number(window24h.rx + window24h.tx);
                 const status = peerPresence({
                   status: peer.status,
                   capturedAt: sample?.capturedAt,
@@ -176,17 +165,11 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
                         <div className="flex shrink-0 items-center gap-4 sm:min-w-[360px] sm:justify-end">
                           <div className="min-w-0 text-right text-xs">
                             <p className="tabular-nums">
-                              За 30 минут: {formatWindowTraffic(window30m.rx, window30m.tx)}
+                              За 30 минут: <WindowTrafficValues rx={window30m.rx} tx={window30m.tx} />
                             </p>
                             <p className="text-muted-foreground tabular-nums">
-                              За 24 часа: {formatWindowTraffic(window24h.rx, window24h.tx)}
+                              За 24 часа: <WindowTrafficValues rx={window24h.rx} tx={window24h.tx} />
                             </p>
-                            <div className="mt-1 h-1.5 w-36 overflow-hidden rounded-full bg-muted">
-                              <div
-                                className="h-full rounded-full bg-foreground/70"
-                                style={{ width: `${Math.max(4, Math.round((dayTotal / maxPeerDay) * 100))}%` }}
-                              />
-                            </div>
                           </div>
                           <Sparkline values={spark} />
                         </div>

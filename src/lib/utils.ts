@@ -11,10 +11,6 @@ export function formatDbSizeGb(value: bigint | number): string {
   return `${gb.toFixed(2).replace(".", ",")} Gb`;
 }
 
-export function formatWindowTraffic(rx: bigint | number, tx: bigint | number): string {
-  return `исходящий: ${formatBytes(rx)}, входящий: ${formatBytes(tx)}`;
-}
-
 export function formatBytes(value: bigint | number): string {
   const n = typeof value === "bigint" ? Number(value) : value;
   if (!Number.isFinite(n) || n < 0) {

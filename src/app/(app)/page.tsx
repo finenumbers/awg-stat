@@ -2,10 +2,11 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { Sparkline } from "@/components/charts/traffic-chart";
+import { WindowTrafficValues } from "@/components/charts/window-traffic";
 import { DeletionNotice } from "@/components/servers/deletion-notice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { serverPollBadge } from "@/lib/presence";
-import { activeAwgVersionLabel, formatDbSizeGb, formatWindowTraffic } from "@/lib/utils";
+import { activeAwgVersionLabel, formatDbSizeGb } from "@/lib/utils";
 import { ONLINE_THRESHOLD_SEC, POLL_INTERVAL_SEC } from "@/server/poll-defaults";
 import { getDatabaseSizeBytes } from "@/server/services/database.service";
 import { listServers, serversTraffic24h } from "@/server/services/server.service";
@@ -109,12 +110,14 @@ export default async function OverviewPage() {
                           `${peers.length} (ещё нет сэмплов)`
                         )}
                       </p>
-                      <p className="text-muted-foreground">
-                        За 30 минут: {formatWindowTraffic(window30m.rx, window30m.tx)}
-                      </p>
-                      <p className="text-muted-foreground">
-                        За 24 часа: {formatWindowTraffic(window24h.rx, window24h.tx)}
-                      </p>
+                      <div className="text-muted-foreground">
+                        <p>
+                          За 30 минут: <WindowTrafficValues rx={window30m.rx} tx={window30m.tx} />
+                        </p>
+                        <p>
+                          За 24 часа: <WindowTrafficValues rx={window24h.rx} tx={window24h.tx} />
+                        </p>
+                      </div>
                       {server.lastPollError && (
                         <p className="text-destructive">{server.lastPollError}</p>
                       )}

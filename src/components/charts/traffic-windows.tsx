@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 
 import { TrafficChart, type TrafficPoint } from "@/components/charts/traffic-chart";
+import { WindowTrafficValues } from "@/components/charts/window-traffic";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { isProtocolTraffic } from "@/lib/presence";
 import { cn, formatBytes } from "@/lib/utils";
@@ -34,26 +35,15 @@ const CHART_HINTS: Record<TrafficWindowId, string> = {
   "30d": "Объём за каждый час. Наведите на график, чтобы увидеть точное время и байты.",
 };
 
-export type TrafficChartScope = "peer" | "server";
 export type ProtocolScale = "poll";
 
 function windowMaxBytes(points: TrafficPoint[]): number {
   return Math.max(0, ...points.map((point) => point.rx + point.tx));
 }
 
-function chartHint(
-  id: TrafficWindowId,
-  scope: TrafficChartScope,
-  protocolScaleActive: boolean,
-): string {
+function chartHint(id: TrafficWindowId, protocolScaleActive: boolean): string {
   if (id === "30m" && protocolScaleActive) {
     return "Масштаб служебного трафика (keepalive/handshake). Ось Y — байты за опрос, не скорость.";
-  }
-  if (id === "30m" && scope === "server") {
-    return "Объём за каждый опрос, сумма пиров. Мелкие всплески — keepalive/handshake.";
-  }
-  if (id === "30m" && scope === "peer") {
-    return "Объём за каждый опрос. Мелкие всплески — keepalive/handshake протокола.";
   }
   return CHART_HINTS[id];
 }
@@ -61,16 +51,12 @@ function chartHint(
 function WindowCard({
   id,
   totals,
-  fromLabel,
-  toLabel,
   active,
   onSelect,
   stale,
 }: {
   id: TrafficWindowId;
   totals: { rx: number; tx: number };
-  fromLabel: string;
-  toLabel: string;
   active: boolean;
   onSelect: (id: TrafficWindowId) => void;
   stale?: boolean;
@@ -91,7 +77,7 @@ function WindowCard({
         {formatBytes(totals.rx + totals.tx)}
       </p>
       <p className="mt-4 text-xs text-muted-foreground">
-        {fromLabel} {formatBytes(totals.rx)} · {toLabel} {formatBytes(totals.tx)}
+        <WindowTrafficValues rx={totals.rx} tx={totals.tx} />
       </p>
       {stale ? <p className="mt-2 text-xs text-amber-800">нет свежих опросов</p> : null}
     </button>
@@ -101,24 +87,14 @@ function WindowCard({
 export function TrafficWindows({
   firstCard,
   windows,
-  rxLabel,
-  txLabel,
-  fromLabel,
-  toLabel,
   chartTitle,
   lastPollLabel,
-  chartScope = "server",
   protocolScale,
 }: {
   firstCard: ReactNode;
   windows: Record<TrafficWindowId, TrafficWindowView>;
-  rxLabel: string;
-  txLabel: string;
-  fromLabel: string;
-  toLabel: string;
   chartTitle: string;
   lastPollLabel?: string | null;
-  chartScope?: TrafficChartScope;
   protocolScale?: ProtocolScale;
 }) {
   const [active, setActive] = useState<TrafficWindowId>("30m");
@@ -149,8 +125,6 @@ export function TrafficWindows({
             key={id}
             id={id}
             totals={windows[id].totals}
-            fromLabel={fromLabel}
-            toLabel={toLabel}
             active={active === id}
             onSelect={setActive}
             stale={id === "30m" && empty30m}
@@ -160,13 +134,11 @@ export function TrafficWindows({
       <Card>
         <CardHeader>
           <CardTitle>{chartTitle}</CardTitle>
-          <CardDescription>{chartHint(active, chartScope, protocolScaleActive)}</CardDescription>
+          <CardDescription>{chartHint(active, protocolScaleActive)}</CardDescription>
         </CardHeader>
         <CardContent>
           <TrafficChart
             points={current.points}
-            rxLabel={rxLabel}
-            txLabel={txLabel}
             unitLabel={UNIT_LABELS[active]}
             emptyTitle={emptyTitle}
             emptyHint={emptyHint}
