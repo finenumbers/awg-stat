@@ -47,11 +47,75 @@ docker compose up -d --build
    - Branch: `main`
 3. Env: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `APP_ENCRYPTION_KEY` (`openssl rand -base64 32`), `APP_URL` (публичный HTTPS **без** `/` на конце).
 4. Включите **Re-pull image** при обновлении.
-5. NPM Proxy Host: `http://gate-app:8088`, WebSockets ON, Force SSL.
+5. Настройте NPM по инструкции ниже.
 
 Редеплой: Pull and redeploy + Re-pull image — всегда новый `latest`.
 
 Postgres в проде не публикуется на хост.
+
+## Настройка Nginx Proxy Manager
+
+NPM в этот стек **не входит**: используется уже работающий экземпляр в Docker-сети `proxy`. Контейнер `gate-app` сам подключается к этой сети, поэтому NPM резолвит его по имени `gate-app`.
+
+### Что должно быть готово
+
+- Стек awg-stat уже запущен в Portainer (контейнер `gate-app` в статусе running).
+- NPM крутится на **том же Docker Engine**, в сети `proxy`.
+- DNS-имя (например `stat.example.com`) указывает на IP хоста NPM.
+
+Проверка сети:
+
+```bash
+docker network inspect proxy --format '{{range .Containers}}{{.Name}} {{end}}'
+```
+
+В списке должны быть контейнер NPM и `gate-app`. Если `gate-app` нет — стек не поднялся или подключён к другой сети.
+
+### Proxy Host
+
+В NPM: **Hosts → Proxy Hosts → Add Proxy Host**.
+
+**Details**
+
+| Поле | Значение |
+|---|---|
+| Domain Names | то же имя, что в `APP_URL`, без `https://` и без `/` |
+| Scheme | `http` |
+| Forward Hostname / IP | `gate-app` |
+| Forward Port | `8088` |
+| Cache Assets | выкл. |
+| Block Common Exploits | по желанию |
+| Websockets Support | **вкл.** |
+| Access List | не обязателен |
+
+Не указывайте `https` и не ставьте IP хоста: приложение слушает только внутри Docker, порт на хост не публикуется.
+
+**SSL**
+
+| Поле | Значение |
+|---|---|
+| SSL Certificate | Request a new SSL Certificate (Let's Encrypt) или свой сертификат |
+| Force SSL | **вкл.** |
+| HTTP/2 Support | вкл. |
+| HSTS Enabled | по желанию |
+
+Сохраните. Откройте `https://ваш-домен` — должен открыться `/setup` (первый запуск) или `/login`.
+
+### Согласовать `APP_URL`
+
+В переменных стека Portainer `APP_URL` должен **точно** совпадать с адресом в браузере:
+
+```text
+APP_URL=https://stat.example.com
+```
+
+Без `/` на конце, только `https`. Иначе Better Auth сломает редиректы и cookies после логина. После смены `APP_URL` пересоздайте стек (Update / Pull and redeploy).
+
+### Типичные ошибки
+
+- **502 Bad Gateway** — `gate-app` ещё не готов, не в сети `proxy`, или указан не тот hostname/порт. Нужны именно `gate-app` и `8088`.
+- **Страница логина зацикливается** — `APP_URL` не совпадает с доменом Proxy Host или Force SSL выключен при заходе по HTTPS.
+- **NPM не резолвит `gate-app`** — разные Docker Engine или сеть не `proxy`.
 
 ## Безопасность чтения
 

@@ -8,7 +8,8 @@
 # Enable "Re-pull image" on update. Images are always :latest.
 #
 # After the first GHCR publish, set the three packages to Public.
-# NPM Proxy Host: http://gate-app:8088, WebSockets ON, Force SSL.
+# NPM: see README «Настройка Nginx Proxy Manager».
+# Proxy Host: http://gate-app:8088, WebSockets ON, Force SSL.
 # APP_URL must be the public HTTPS URL without a trailing slash.
 
 services:
