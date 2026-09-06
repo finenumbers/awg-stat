@@ -57,8 +57,7 @@ export default async function PeerPage({
   return (
     <main className="w-full space-y-6 p-8">
       <div>
-        <p className="text-sm text-muted-foreground">{peer.vpnInstance.server.name}</p>
-        <div className="mt-1 flex items-baseline justify-between gap-4">
+        <div className="flex items-baseline justify-between gap-4">
           <h1 className="min-w-0 text-2xl font-semibold tracking-tight">{name}</h1>
           {internalIp ? (
             <p className="shrink-0 text-2xl font-semibold tabular-nums tracking-tight text-right">

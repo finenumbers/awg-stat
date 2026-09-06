@@ -20,10 +20,10 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
 
   return (
     <aside className="sticky top-0 flex h-svh w-max shrink-0 flex-col self-start border-r bg-card px-4 py-6">
-      <div className="flex min-h-0 w-max flex-1 flex-col px-3">
+      <div className="flex min-h-0 w-max flex-1 flex-col">
         <span
           aria-hidden
-          className="block h-0 overflow-hidden whitespace-nowrap text-sm font-bold"
+          className="block h-0 overflow-hidden whitespace-nowrap px-3 text-sm font-bold"
         >
           {SIDEBAR_WIDTH_LABEL}
         </span>
@@ -47,7 +47,7 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
                   href={href}
                   title={server.name}
                   className={cn(
-                    "-mx-3 block truncate rounded-md px-3 py-2 text-sm font-bold text-black",
+                    "block w-full truncate rounded-md px-3 py-2 text-sm font-bold text-black",
                     isServerActive(pathname, href) ? "bg-secondary" : "hover:bg-accent",
                   )}
                 >
@@ -60,7 +60,7 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
             <Link
               href="/servers/new"
               className={cn(
-                "-mx-3 rounded-md px-3 py-2 text-sm",
+                "block w-full rounded-md px-3 py-2 text-sm",
                 pathname === "/servers/new" ? "bg-secondary font-medium" : "text-muted-foreground hover:bg-accent",
               )}
             >
@@ -68,7 +68,7 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
             </Link>
             <button
               type="button"
-              className="-mx-3 rounded-md px-3 py-2 text-left text-sm text-muted-foreground hover:bg-accent"
+              className="w-full rounded-md px-3 py-2 text-left text-sm text-muted-foreground hover:bg-accent"
               onClick={async () => {
                 await signOut();
                 router.push("/login");
