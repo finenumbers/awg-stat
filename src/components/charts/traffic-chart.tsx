@@ -75,9 +75,9 @@ export function TrafficChart({
       points
         .map((point, index) => `${index === 0 ? "M" : "L"}${xAt(index).toFixed(1)},${yAt(point[key]).toFixed(1)}`)
         .join(" ");
-    const area =
+    const area = (key: "rx" | "tx") =>
       points.length > 1
-        ? `${path("rx")} L${xAt(points.length - 1).toFixed(1)},${yAt(0).toFixed(1)} L${xAt(0).toFixed(1)},${yAt(0).toFixed(1)} Z`
+        ? `${path(key)} L${xAt(points.length - 1).toFixed(1)},${yAt(0).toFixed(1)} L${xAt(0).toFixed(1)},${yAt(0).toFixed(1)} Z`
         : "";
     const timeIndexes = points.length <= 1 ? [0] : [0, Math.floor((points.length - 1) / 2), points.length - 1];
     if (points.length >= 5) {
@@ -108,14 +108,12 @@ export function TrafficChart({
             <span className="h-0.5 w-4 rounded-full" style={{ background: RX_COLOR }} />
             {rxLabel}
           </span>
-          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <span className="h-px w-4 border-t-2 border-dashed" style={{ borderColor: TX_COLOR }} />
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-0.5 w-4 rounded-full" style={{ background: TX_COLOR }} />
             {txLabel}
           </span>
         </div>
-        <p className="text-muted-foreground">
-          {unitLabel} · сплошная {rxLabel.toLowerCase()}, пунктир {txLabel.toLowerCase()}
-        </p>
+        <p className="text-muted-foreground">{unitLabel}</p>
       </div>
       <div ref={chartRef} className="relative w-full">
         <svg
@@ -168,9 +166,10 @@ export function TrafficChart({
               {formatChartTime(points[index]!.t, layout.span)}
             </text>
           ))}
-          <path d={layout.area} fill={RX_COLOR} opacity="0.12" />
+          <path d={layout.area("tx")} fill={TX_COLOR} opacity="0.18" />
+          <path d={layout.area("rx")} fill={RX_COLOR} opacity="0.18" />
           <path d={layout.path("rx")} fill="none" stroke={RX_COLOR} strokeWidth="2" />
-          <path d={layout.path("tx")} fill="none" stroke={TX_COLOR} strokeWidth="2" strokeDasharray="5 4" />
+          <path d={layout.path("tx")} fill="none" stroke={TX_COLOR} strokeWidth="2" />
           {hover !== null && (
             <>
               <line
