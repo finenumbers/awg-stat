@@ -3,6 +3,8 @@ import { test } from "node:test";
 
 import {
   activeAwgVersionLabel,
+  comparePeerInternalIp,
+  compareServerName,
   displayPeerEndpoint,
   displayPeerInternalIp,
   formatDateTime,
@@ -16,6 +18,24 @@ test("activeAwgVersionLabel returns only real protocol generations", () => {
   assert.equal(activeAwgVersionLabel("UNKNOWN"), null);
   assert.equal(activeAwgVersionLabel(null), null);
   assert.equal(activeAwgVersionLabel(undefined), null);
+});
+
+test("compareServerName sorts Russian names case-insensitively", () => {
+  const names = ["vpn-10", "Ёлка", "Vpn-2", "альфа"];
+  assert.deepEqual([...names].sort(compareServerName), ["альфа", "Ёлка", "Vpn-2", "vpn-10"]);
+});
+
+test("comparePeerInternalIp sorts by numeric IPv4 and puts missing IPs last", () => {
+  const peers = [
+    { allowedIps: "10.8.1.10/32", publicKey: "b" },
+    { allowedIps: null, publicKey: "z" },
+    { allowedIps: "10.8.1.2/32", publicKey: "a" },
+    { allowedIps: "fd00::2/128", publicKey: "c" },
+  ];
+  assert.deepEqual(
+    [...peers].sort(comparePeerInternalIp).map((peer) => peer.publicKey),
+    ["a", "b", "c", "z"],
+  );
 });
 
 test("displayPeerInternalIp prefers the first IPv4 host from allowedIps", () => {

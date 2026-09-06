@@ -79,6 +79,61 @@ export function displayPeerInternalIp(allowedIps: string | null | undefined): st
   return ipv6;
 }
 
+const NAME_COLLATOR = new Intl.Collator("ru", { sensitivity: "base", numeric: true });
+const IPV4_ADDR = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/\d+)?$/;
+
+export function compareServerName(a: string, b: string): number {
+  return NAME_COLLATOR.compare(a, b);
+}
+
+function ipv4Rank(ip: string): number | null {
+  const match = ip.match(IPV4_ADDR);
+  if (!match) {
+    return null;
+  }
+  const octets = [Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4])];
+  if (octets.some((octet) => octet > 255)) {
+    return null;
+  }
+  return ((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0;
+}
+
+export function comparePeerInternalIp(
+  a: { allowedIps?: string | null; publicKey?: string },
+  b: { allowedIps?: string | null; publicKey?: string },
+): number {
+  const aIp = displayPeerInternalIp(a.allowedIps);
+  const bIp = displayPeerInternalIp(b.allowedIps);
+  if (!aIp && !bIp) {
+    return (a.publicKey ?? "").localeCompare(b.publicKey ?? "");
+  }
+  if (!aIp) {
+    return 1;
+  }
+  if (!bIp) {
+    return -1;
+  }
+
+  const aV4 = ipv4Rank(aIp);
+  const bV4 = ipv4Rank(bIp);
+  if (aV4 != null && bV4 != null && aV4 !== bV4) {
+    return aV4 - bV4;
+  }
+  if (aV4 != null && bV4 == null) {
+    return -1;
+  }
+  if (aV4 == null && bV4 != null) {
+    return 1;
+  }
+  if (aV4 == null && bV4 == null) {
+    const byIp = aIp.localeCompare(bIp);
+    if (byIp !== 0) {
+      return byIp;
+    }
+  }
+  return (a.publicKey ?? "").localeCompare(b.publicKey ?? "");
+}
+
 export type AwgVersionValue = "V31" | "V30" | "V2" | "UNKNOWN" | null | undefined;
 
 export function activeAwgVersionLabel(version: AwgVersionValue): string | null {

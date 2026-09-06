@@ -27,6 +27,7 @@ export async function createServerAction(formData: FormData): Promise<ActionResu
   try {
     const server = await createAndOnboardServer(parsed.data, ssh.data, session.user.id);
     revalidatePath("/");
+    revalidatePath("/", "layout");
     return { ok: true, data: { id: server.id } };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Не удалось подключить сервер" };
@@ -54,6 +55,7 @@ export async function deleteServerAction(id: string): Promise<ActionResult<{ nam
   try {
     const result = await deleteServer(id, session.user.id);
     revalidatePath("/");
+    revalidatePath("/", "layout");
     revalidatePath(`/servers/${id}`);
     return { ok: true, data: { name: result.name } };
   } catch (error) {

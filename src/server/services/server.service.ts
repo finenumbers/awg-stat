@@ -1,9 +1,10 @@
 import { Prisma, type AuthMethod } from "@prisma/client";
 
 import { db } from "@/lib/db";
+import { filterPointsSince } from "@/lib/traffic-points";
+import { comparePeerInternalIp, compareServerName } from "@/lib/utils";
 import type { SshAuthInput } from "@/lib/validations/identity";
 import type { ServerInput } from "@/lib/validations/server";
-import { filterPointsSince } from "@/lib/traffic-points";
 import { RAW_RETENTION_DAYS, SPARKLINE_SAMPLES } from "@/server/poll-defaults";
 import { releaseServerRuntime } from "@/server/poller-queues";
 import { createAuditEvent } from "@/server/services/audit.service";
@@ -79,8 +80,7 @@ function toPoint(capturedAt: Date, rxDelta: bigint, txDelta: bigint) {
 }
 
 export async function listServers() {
-  return db.server.findMany({
-    orderBy: { name: "asc" },
+  const servers = await db.server.findMany({
     include: {
       vpnInstance: {
         include: {
@@ -96,16 +96,23 @@ export async function listServers() {
       },
     },
   });
+  return [...servers].sort((a, b) => compareServerName(a.name, b.name));
+}
+
+export async function listServerNavItems() {
+  const servers = await db.server.findMany({
+    select: { id: true, name: true },
+  });
+  return [...servers].sort((a, b) => compareServerName(a.name, b.name));
 }
 
 export async function getServerDetail(id: string) {
-  return db.server.findUnique({
+  const server = await db.server.findUnique({
     where: { id },
     include: {
       vpnInstance: {
         include: {
           peers: {
-            orderBy: [{ status: "asc" }, { createdAt: "asc" }],
             include: { samples: { orderBy: { capturedAt: "desc" }, take: SPARKLINE_SAMPLES } },
           },
         },
@@ -116,6 +123,16 @@ export async function getServerDetail(id: string) {
       },
     },
   });
+  if (!server?.vpnInstance) {
+    return server;
+  }
+  return {
+    ...server,
+    vpnInstance: {
+      ...server.vpnInstance,
+      peers: [...server.vpnInstance.peers].sort(comparePeerInternalIp),
+    },
+  };
 }
 
 const PRESENCE_EVENTS_TAKE = 100;

@@ -3,7 +3,6 @@ import { Suspense } from "react";
 
 import { Sparkline } from "@/components/charts/traffic-chart";
 import { DeletionNotice } from "@/components/servers/deletion-notice";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { serverPollBadge } from "@/lib/presence";
 import { activeAwgVersionLabel, formatBytes, formatDateTime } from "@/lib/utils";
@@ -16,17 +15,7 @@ export default async function OverviewPage() {
   const servers = await listServers();
   return (
     <main className="w-full space-y-8 p-8">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Обзор</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Только живые данные с уже установленных серверов. Управление VPN — в приложении AmneziaVPN.
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/servers/new">Добавить сервер</Link>
-        </Button>
-      </div>
+      <h1 className="text-2xl font-semibold tracking-tight">Мониторинг серверов AmneziaVPN</h1>
 
       <Suspense fallback={null}>
         <DeletionNotice />

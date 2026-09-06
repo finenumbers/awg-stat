@@ -65,12 +65,7 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
     <main className="w-full space-y-6 p-8">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">
-            <Link href="/" className="hover:underline">
-              Обзор
-            </Link>
-          </p>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">{server.name}</h1>
             <span className={`rounded-full px-2 py-0.5 text-xs ${statusTone(pollBadge.tone)}`}>
               {pollBadge.label}
