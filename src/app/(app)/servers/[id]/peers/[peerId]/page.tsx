@@ -3,17 +3,20 @@ import { notFound } from "next/navigation";
 import { TrafficWindows } from "@/components/charts/traffic-windows";
 import { PresenceEventsCard } from "@/components/peers/presence-events-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { peerPresence, type PresenceKind } from "@/lib/presence";
-import { cn, displayPeerInternalIp, displayPeerName, formatDateTime, formatRelativeHandshake } from "@/lib/utils";
+import { peerPresence, sessionLeftHint, type PeerPresenceView } from "@/lib/presence";
+import { cn, displayPeerInternalIp, displayPeerName, formatBytes, formatDateTime, formatRelativeHandshake } from "@/lib/utils";
 import { getPeerDetail, listPeerPresenceEvents, peerTrafficWindows } from "@/server/services/server.service";
 
 export const dynamic = "force-dynamic";
 
-function statusCardClass(kind: PresenceKind): string {
-  if (kind === "online") {
+function statusCardClass(presence: PeerPresenceView): string {
+  if (presence.kind === "online" && presence.activity === "session") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-950";
+  }
+  if (presence.kind === "online") {
     return "border-emerald-400 bg-emerald-200 text-emerald-950";
   }
-  if (kind === "offline") {
+  if (presence.kind === "offline") {
     return "border-red-400 bg-red-200 text-red-950";
   }
   return "";
@@ -50,6 +53,8 @@ export default async function PeerPage({
     : server.lastPollAt
       ? formatDateTime(server.lastPollAt)
       : null;
+  const sessionHint =
+    presence.activity === "session" ? sessionLeftHint(presence.sessionLeftSec) : null;
 
   return (
     <main className="w-full space-y-6 p-8">
@@ -74,7 +79,7 @@ export default async function PeerPage({
 
       <TrafficWindows
         firstCard={
-          <Card className={statusCardClass(presence.kind)}>
+          <Card className={statusCardClass(presence)}>
             <CardHeader className="pb-2">
               <CardDescription
                 className={cn(
@@ -87,14 +92,18 @@ export default async function PeerPage({
             </CardHeader>
             <CardContent
               className={cn(
-                "text-sm",
+                "space-y-1 text-sm",
                 presence.kind === "online" || presence.kind === "offline"
                   ? "text-current/70"
                   : "text-muted-foreground",
               )}
             >
-              Handshake: {latest ? formatRelativeHandshake(latest.handshakeUnix) : "—"}
-              {lastPollLabel ? ` · опрос ${lastPollLabel}` : ""}
+              <p>
+                Handshake: {latest ? formatRelativeHandshake(latest.handshakeUnix) : "—"}
+                {latest ? ` · за опрос ${formatBytes(presence.pollBytes)}` : ""}
+              </p>
+              {sessionHint ? <p>{sessionHint}</p> : null}
+              {lastPollLabel ? <p>опрос {lastPollLabel}</p> : null}
             </CardContent>
           </Card>
         }
@@ -105,6 +114,8 @@ export default async function PeerPage({
         toLabel="к пиру"
         chartTitle="Трафик пира"
         lastPollLabel={lastPollLabel}
+        chartScope="peer"
+        protocolScale="poll"
       />
 
       <PresenceEventsCard

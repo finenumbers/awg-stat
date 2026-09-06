@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { PROTOCOL_TRAFFIC_MAX_BYTES } from "@/server/poll-defaults";
+
 import {
   isPeerOnline,
   isPollFresh,
+  isProtocolTraffic,
   peerPresence,
+  sessionLeftHint,
   presenceEventView,
   presenceTransition,
   previousPresenceOnline,
@@ -22,10 +26,11 @@ test("peerPresence: fresh handshake is online", () => {
     nowMs: NOW,
   });
   assert.equal(presence.kind, "online");
-  assert.equal(presence.label, "онлайн");
+  assert.equal(presence.label, "онлайн · сессия");
+  assert.equal(presence.activity, "session");
 });
 
-test("peerPresence: handshake 70s old without traffic is still online", () => {
+test("peerPresence: handshake 70s old without traffic is session", () => {
   const capturedAt = new Date(NOW - 15_000);
   const presence = peerPresence({
     status: "ACTIVE",
@@ -36,6 +41,69 @@ test("peerPresence: handshake 70s old without traffic is still online", () => {
     nowMs: NOW,
   });
   assert.equal(presence.kind, "online");
+  assert.equal(presence.activity, "session");
+  assert.equal(presence.label, "онлайн · сессия");
+  assert.equal(presence.sessionLeftSec, 110);
+  assert.equal(presence.handshakeAgeSec, 70);
+});
+
+test("peerPresence: user-scale traffic is active online", () => {
+  const capturedAt = new Date(NOW - 15_000);
+  const presence = peerPresence({
+    status: "ACTIVE",
+    capturedAt,
+    handshakeUnix: BigInt(Math.floor(capturedAt.getTime() / 1000) - 20),
+    rxDelta: 50_000n,
+    txDelta: 0n,
+    nowMs: NOW,
+  });
+  assert.equal(presence.kind, "online");
+  assert.equal(presence.activity, "active");
+  assert.equal(presence.label, "онлайн");
+  assert.equal(presence.pollBytes, 50_000n);
+});
+
+test("peerPresence: handshake 200s old with keepalive bytes is still session", () => {
+  const capturedAt = new Date(NOW - 15_000);
+  const presence = peerPresence({
+    status: "ACTIVE",
+    capturedAt,
+    handshakeUnix: BigInt(Math.floor(capturedAt.getTime() / 1000) - 200),
+    rxDelta: 128n,
+    txDelta: 0n,
+    nowMs: NOW,
+  });
+  assert.equal(presence.kind, "online");
+  assert.equal(presence.activity, "session");
+  assert.equal(presence.label, "онлайн · сессия");
+  assert.equal(presence.sessionLeftSec, null);
+});
+
+test("peerPresence: sessionLeftSec is taken from the poll snapshot, not nowMs", () => {
+  const capturedAt = new Date(NOW - 15_000);
+  const handshakeUnix = BigInt(Math.floor(capturedAt.getTime() / 1000) - 40);
+  const presence = peerPresence({
+    status: "ACTIVE",
+    capturedAt,
+    handshakeUnix,
+    rxDelta: 0n,
+    txDelta: 0n,
+    nowMs: NOW + 50_000,
+  });
+  assert.equal(presence.kind, "online");
+  assert.equal(presence.sessionLeftSec, 140);
+});
+
+test("sessionLeftHint stays silent without a snapshot remainder", () => {
+  assert.equal(sessionLeftHint(null), null);
+  assert.equal(sessionLeftHint(110), "сессия WG, офлайн не раньше ~110 с от этого опроса");
+});
+
+test("isProtocolTraffic stays at the documented 4 KiB ceiling", () => {
+  assert.equal(isProtocolTraffic(0), true);
+  assert.equal(isProtocolTraffic(128n), true);
+  assert.equal(isProtocolTraffic(PROTOCOL_TRAFFIC_MAX_BYTES), true);
+  assert.equal(isProtocolTraffic(PROTOCOL_TRAFFIC_MAX_BYTES + 1), false);
 });
 
 test("peerPresence: handshake 200s old without traffic is offline", () => {
@@ -49,19 +117,6 @@ test("peerPresence: handshake 200s old without traffic is offline", () => {
     nowMs: NOW,
   });
   assert.equal(presence.kind, "offline");
-});
-
-test("peerPresence: handshake 200s old with traffic is online", () => {
-  const capturedAt = new Date(NOW - 15_000);
-  const presence = peerPresence({
-    status: "ACTIVE",
-    capturedAt,
-    handshakeUnix: BigInt(Math.floor(capturedAt.getTime() / 1000) - 200),
-    rxDelta: 128n,
-    txDelta: 0n,
-    nowMs: NOW,
-  });
-  assert.equal(presence.kind, "online");
 });
 
 test("peerPresence: snapshot does not age between refreshes", () => {

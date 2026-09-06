@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { isProtocolTraffic } from "@/lib/presence";
 import { formatBytes, formatChartTime } from "@/lib/utils";
 
 export type TrafficPoint = { t: number; rx: number; tx: number };
@@ -30,6 +31,7 @@ export function TrafficChart({
   unitLabel = "За опрос",
   emptyTitle,
   emptyHint,
+  protocolCeiling = false,
 }: {
   points: TrafficPoint[];
   height?: number;
@@ -38,6 +40,7 @@ export function TrafficChart({
   unitLabel?: string;
   emptyTitle?: string;
   emptyHint?: string;
+  protocolCeiling?: boolean;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const [width, setWidth] = useState(800);
@@ -193,6 +196,9 @@ export function TrafficChart({
             <p style={{ color: TX_COLOR }}>
               {txLabel}: {formatBytes(active.tx)}
             </p>
+            {protocolCeiling && isProtocolTraffic(active.rx + active.tx) ? (
+              <p className="mt-1 text-muted-foreground">служебный</p>
+            ) : null}
           </div>
         )}
       </div>

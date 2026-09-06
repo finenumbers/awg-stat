@@ -110,7 +110,9 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
                 {latest ? `${latest.onlineCount} / ${latest.peerCount}` : "—"}
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">онлайн / всего по последнему опросу</CardContent>
+            <CardContent className="text-xs text-muted-foreground">
+              сессии WG / всего по последнему опросу
+            </CardContent>
           </Card>
         }
         windows={windows}
@@ -120,6 +122,7 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
         toLabel="к пирам"
         chartTitle="Трафик сервера"
         lastPollLabel={lastPollLabel}
+        chartScope="server"
       />
 
       <Card>

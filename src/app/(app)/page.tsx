@@ -93,7 +93,7 @@ export default async function OverviewPage() {
                                   : undefined
                               }
                             >
-                              {online} онлайн
+                              {online} сессий
                             </span>
                             {` / ${latest.peerCount} по последнему опросу`}
                           </>
@@ -123,7 +123,8 @@ export default async function OverviewPage() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        Сессия {ONLINE_THRESHOLD_SEC} с или трафик в опросе · опрос каждые {POLL_INTERVAL_SEC} с
+        Сессия WG {ONLINE_THRESHOLD_SEC} с или трафик в опросе · опрос каждые {POLL_INTERVAL_SEC} с ·
+        мелкий трафик — keepalive/handshake
       </p>
     </main>
   );

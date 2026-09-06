@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 
 import { TrafficChart, type TrafficPoint } from "@/components/charts/traffic-chart";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { isProtocolTraffic } from "@/lib/presence";
 import { cn, formatBytes } from "@/lib/utils";
 
 export type TrafficWindowId = "30m" | "24h" | "30d";
@@ -32,6 +33,30 @@ const CHART_HINTS: Record<TrafficWindowId, string> = {
   "24h": "Объём за каждую минуту. Наведите на график, чтобы увидеть точное время и байты.",
   "30d": "Объём за каждый час. Наведите на график, чтобы увидеть точное время и байты.",
 };
+
+export type TrafficChartScope = "peer" | "server";
+export type ProtocolScale = "poll";
+
+function windowMaxBytes(points: TrafficPoint[]): number {
+  return Math.max(0, ...points.map((point) => point.rx + point.tx));
+}
+
+function chartHint(
+  id: TrafficWindowId,
+  scope: TrafficChartScope,
+  protocolScaleActive: boolean,
+): string {
+  if (id === "30m" && protocolScaleActive) {
+    return "Масштаб служебного трафика (keepalive/handshake). Ось Y — байты за опрос, не скорость.";
+  }
+  if (id === "30m" && scope === "server") {
+    return "Объём за каждый опрос, сумма пиров. Мелкие всплески — keepalive/handshake.";
+  }
+  if (id === "30m" && scope === "peer") {
+    return "Объём за каждый опрос. Мелкие всплески — keepalive/handshake протокола.";
+  }
+  return CHART_HINTS[id];
+}
 
 function WindowCard({
   id,
@@ -82,6 +107,8 @@ export function TrafficWindows({
   toLabel,
   chartTitle,
   lastPollLabel,
+  chartScope = "server",
+  protocolScale,
 }: {
   firstCard: ReactNode;
   windows: Record<TrafficWindowId, TrafficWindowView>;
@@ -91,10 +118,17 @@ export function TrafficWindows({
   toLabel: string;
   chartTitle: string;
   lastPollLabel?: string | null;
+  chartScope?: TrafficChartScope;
+  protocolScale?: ProtocolScale;
 }) {
   const [active, setActive] = useState<TrafficWindowId>("30m");
   const current = windows[active];
   const empty30m = windows["30m"].points.length < 2;
+  const protocolScaleActive =
+    protocolScale === "poll" &&
+    active === "30m" &&
+    current.points.length >= 2 &&
+    isProtocolTraffic(windowMaxBytes(current.points));
   const emptyTitle =
     active === "30m" && empty30m
       ? "Нет опросов за последние 30 минут"
@@ -126,7 +160,7 @@ export function TrafficWindows({
       <Card>
         <CardHeader>
           <CardTitle>{chartTitle}</CardTitle>
-          <CardDescription>{CHART_HINTS[active]}</CardDescription>
+          <CardDescription>{chartHint(active, chartScope, protocolScaleActive)}</CardDescription>
         </CardHeader>
         <CardContent>
           <TrafficChart
@@ -136,6 +170,7 @@ export function TrafficWindows({
             unitLabel={UNIT_LABELS[active]}
             emptyTitle={emptyTitle}
             emptyHint={emptyHint}
+            protocolCeiling={protocolScale === "poll" && active === "30m"}
           />
         </CardContent>
       </Card>

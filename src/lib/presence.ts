@@ -1,13 +1,30 @@
-import { ONLINE_THRESHOLD_SEC, SAMPLE_FRESH_SEC } from "@/server/poll-defaults";
+import {
+  ONLINE_THRESHOLD_SEC,
+  PROTOCOL_TRAFFIC_MAX_BYTES,
+  SAMPLE_FRESH_SEC,
+} from "@/server/poll-defaults";
 
 export type PresenceKind = "online" | "offline" | "stale" | "unknown" | "removed";
 export type PresenceTone = "ok" | "warn" | "off";
+export type PresenceActivity = "active" | "session";
 
 export type Presence = {
   kind: PresenceKind;
   label: string;
   tone: PresenceTone;
 };
+
+export type PeerPresenceView = Presence & {
+  activity: PresenceActivity | null;
+  handshakeAgeSec: number | null;
+  sessionLeftSec: number | null;
+  pollBytes: bigint;
+};
+
+export function isProtocolTraffic(bytes: bigint | number): boolean {
+  const value = typeof bytes === "bigint" ? bytes : BigInt(Math.max(0, Math.floor(bytes)));
+  return value <= BigInt(PROTOCOL_TRAFFIC_MAX_BYTES);
+}
 
 export function isPollFresh(at: Date | null | undefined, nowMs = Date.now()): boolean {
   if (!at) {
@@ -30,6 +47,45 @@ export function isPeerOnline(input: {
   return sessionAlive || hasTraffic;
 }
 
+function pollBytesOf(input: { rxDelta?: bigint | null; txDelta?: bigint | null }): bigint {
+  return (input.rxDelta ?? 0n) + (input.txDelta ?? 0n);
+}
+
+function handshakeSnapshot(
+  capturedAt: Date | null | undefined,
+  handshakeUnix?: bigint | null,
+): { handshakeAgeSec: number | null; sessionLeftSec: number | null } {
+  const handshake = handshakeUnix ?? 0n;
+  if (!capturedAt || handshake <= 0n) {
+    return { handshakeAgeSec: null, sessionLeftSec: null };
+  }
+  const capturedSec = Math.floor(capturedAt.getTime() / 1000);
+  const handshakeAgeSec = capturedSec - Number(handshake);
+  const sessionAlive = handshakeAgeSec <= ONLINE_THRESHOLD_SEC;
+  return {
+    handshakeAgeSec,
+    sessionLeftSec: sessionAlive ? ONLINE_THRESHOLD_SEC - handshakeAgeSec : null,
+  };
+}
+
+function withPeerMeta(
+  presence: Presence,
+  input: {
+    capturedAt?: Date | null;
+    handshakeUnix?: bigint | null;
+    rxDelta?: bigint | null;
+    txDelta?: bigint | null;
+    activity?: PresenceActivity | null;
+  },
+): PeerPresenceView {
+  return {
+    ...presence,
+    activity: input.activity ?? null,
+    pollBytes: pollBytesOf(input),
+    ...handshakeSnapshot(input.capturedAt, input.handshakeUnix),
+  };
+}
+
 export function peerPresence(input: {
   status?: "ACTIVE" | "REMOVED";
   capturedAt?: Date | null;
@@ -37,17 +93,17 @@ export function peerPresence(input: {
   rxDelta?: bigint | null;
   txDelta?: bigint | null;
   nowMs?: number;
-}): Presence {
+}): PeerPresenceView {
   if (input.status === "REMOVED") {
-    return { kind: "removed", label: "удалён в VPN", tone: "off" };
+    return withPeerMeta({ kind: "removed", label: "удалён в VPN", tone: "off" }, input);
   }
   if (!input.capturedAt) {
-    return { kind: "unknown", label: "ещё нет сэмплов", tone: "off" };
+    return withPeerMeta({ kind: "unknown", label: "ещё нет сэмплов", tone: "off" }, input);
   }
 
   const nowMs = input.nowMs ?? Date.now();
   if (!isPollFresh(input.capturedAt, nowMs)) {
-    return { kind: "stale", label: "данные устарели", tone: "warn" };
+    return withPeerMeta({ kind: "stale", label: "данные устарели", tone: "warn" }, input);
   }
 
   if (
@@ -58,9 +114,17 @@ export function peerPresence(input: {
       txDelta: input.txDelta,
     })
   ) {
-    return { kind: "online", label: "онлайн", tone: "ok" };
+    const activity: PresenceActivity = isProtocolTraffic(pollBytesOf(input)) ? "session" : "active";
+    return withPeerMeta(
+      {
+        kind: "online",
+        label: activity === "session" ? "онлайн · сессия" : "онлайн",
+        tone: "ok",
+      },
+      { ...input, activity },
+    );
   }
-  return { kind: "offline", label: "офлайн", tone: "warn" };
+  return withPeerMeta({ kind: "offline", label: "офлайн", tone: "warn" }, input);
 }
 
 export type PresenceEventKind = "ONLINE" | "OFFLINE";
@@ -92,6 +156,13 @@ export function presenceTransition(input: {
     return null;
   }
   return input.online ? "ONLINE" : "OFFLINE";
+}
+
+export function sessionLeftHint(sessionLeftSec: number | null): string | null {
+  if (sessionLeftSec == null) {
+    return null;
+  }
+  return `сессия WG, офлайн не раньше ~${sessionLeftSec} с от этого опроса`;
 }
 
 export function presenceEventView(kind: PresenceEventKind): Presence {
