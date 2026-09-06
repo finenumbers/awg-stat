@@ -127,10 +127,22 @@ export default async function OverviewPage() {
                       </p>
                       <div className="text-muted-foreground">
                         <p>
-                          За 30 минут: <WindowTrafficValues rx={window30m.rx} tx={window30m.tx} />
+                          За 30 минут:{" "}
+                          <WindowTrafficValues
+                            rx={window30m.rx}
+                            tx={window30m.tx}
+                            rxLabel="исходящий:"
+                            txLabel="входящий:"
+                          />
                         </p>
                         <p>
-                          За 24 часа: <WindowTrafficValues rx={window24h.rx} tx={window24h.tx} />
+                          За 24 часа:{" "}
+                          <WindowTrafficValues
+                            rx={window24h.rx}
+                            tx={window24h.tx}
+                            rxLabel="исходящий:"
+                            txLabel="входящий:"
+                          />
                         </p>
                       </div>
                       {server.lastPollError && (
