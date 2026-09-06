@@ -19,19 +19,26 @@ function statusTone(tone: "ok" | "warn" | "off") {
   return "bg-zinc-100 text-zinc-700";
 }
 
-function EndpointLabel({ endpoint, geo }: { endpoint: string | null; geo?: EndpointGeoLabel | null }) {
+function EndpointParts({ endpoint, geo }: { endpoint: string | null | undefined; geo?: EndpointGeoLabel | null }) {
   const parsed = displayPeerEndpoint(endpoint);
   if (!parsed) {
     return <span className="text-muted-foreground">нет в архиве</span>;
   }
-  const address = parsed.port ? `${parsed.host}:${parsed.port}` : parsed.host;
   const suffix = formatEndpointGeo(geo);
   return (
     <span className="tabular-nums">
-      <span className="font-bold text-black">{address}</span>
+      <span className="font-bold text-black">{parsed.host}</span>
+      {parsed.port ? `:${parsed.port}` : null}
       {suffix ? ` (${suffix})` : null}
     </span>
   );
+}
+
+function EndpointLabel({ endpoint, geo }: { endpoint: string | null; geo?: EndpointGeoLabel | null }) {
+  if (!displayPeerEndpoint(endpoint)) {
+    return <span className="text-muted-foreground">нет в архиве</span>;
+  }
+  return <EndpointParts endpoint={endpoint} geo={geo} />;
 }
 
 function CurrentEndpoint({
@@ -41,19 +48,12 @@ function CurrentEndpoint({
   endpoint: string | null | undefined;
   geo?: EndpointGeoLabel | null;
 }) {
-  const parsed = displayPeerEndpoint(endpoint);
-  if (!parsed) {
+  if (!displayPeerEndpoint(endpoint)) {
     return null;
   }
-  const address = parsed.port ? `${parsed.host}:${parsed.port}` : parsed.host;
-  const suffix = formatEndpointGeo(geo);
   return (
     <p className="text-sm">
-      Сейчас{" "}
-      <span className="tabular-nums">
-        <span className="font-bold text-black">{address}</span>
-        {suffix ? ` (${suffix})` : null}
-      </span>
+      Сейчас <EndpointParts endpoint={endpoint} geo={geo} />
     </p>
   );
 }

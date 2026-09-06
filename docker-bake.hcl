@@ -7,7 +7,7 @@ variable "IMAGE_OWNER" {
 }
 
 variable "APP_VERSION" {
-  default = "0.1.5"
+  default = "0.1.6"
 }
 
 variable "BUILD_SHA" {

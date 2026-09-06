@@ -99,6 +99,9 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    networks:
+      - default
+      - npm_proxy
 
 networks:
   npm_proxy:

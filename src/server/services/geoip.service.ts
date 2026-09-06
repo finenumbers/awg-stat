@@ -1,35 +1,38 @@
 import { displayPeerEndpoint } from "@/lib/utils";
 import {
   cacheIsFresh,
+  classifyParsedGeo,
+  GEOIP_ENRICH_DEADLINE_MS,
   GEOIP_LOOKUP_CONCURRENCY,
   GEOIP_LOOKUP_TIMEOUT_MS,
   GEOIP_MAX_API_PER_TICK,
   geoipLookupUrl,
+  hasUsefulGeo,
   isGeoipConfigured,
   isLookupableIp,
   parseLookupResponse,
+  tryConsumeGeoipApiSlot,
   type EndpointGeo,
+  type GeoipLookupResult,
 } from "@/lib/geoip";
+import { RAW_RETENTION_DAYS } from "@/server/poll-defaults";
 import { db } from "@/lib/db";
 
 const inflight = new Map<string, Promise<EndpointGeo | null>>();
-const logged = new Set<string>();
-let disabledLogged = false;
+let startupLogged = false;
 
 export function warnIfGeoipDisabled(): void {
-  if (isGeoipConfigured() || disabledLogged) {
+  if (startupLogged) {
     return;
   }
-  disabledLogged = true;
-  console.warn("[geoip] disabled: GEOIP_API_URL / GEOIP_API_KEY are empty");
-}
-
-function logOnce(key: string, message: string): void {
-  if (logged.has(key)) {
+  startupLogged = true;
+  const url = process.env["GEOIP_API_URL"]?.trim() ?? "";
+  const key = process.env["GEOIP_API_KEY"]?.trim() ?? "";
+  if (!isGeoipConfigured(url, key)) {
+    console.warn("[geoip] disabled: GEOIP_API_URL / GEOIP_API_KEY are empty");
     return;
   }
-  logged.add(key);
-  console.warn(message);
+  console.info(`[geoip] configured host=${url}`);
 }
 
 export function endpointMatchFilter(ip: string) {
@@ -44,13 +47,12 @@ export async function fetchGeoipLookup(
     url?: string;
     key?: string;
     fetchImpl?: typeof fetch;
-    now?: Date;
   },
-): Promise<EndpointGeo | null> {
-  const url = options?.url ?? process.env.GEOIP_API_URL;
-  const key = options?.key ?? process.env.GEOIP_API_KEY;
+): Promise<GeoipLookupResult> {
+  const url = options?.url ?? process.env["GEOIP_API_URL"];
+  const key = options?.key ?? process.env["GEOIP_API_KEY"];
   if (!isGeoipConfigured(url, key) || !url || !key) {
-    return null;
+    return { kind: "disabled" };
   }
 
   const fetchImpl = options?.fetchImpl ?? fetch;
@@ -67,30 +69,43 @@ export async function fetchGeoipLookup(
       signal: controller.signal,
     });
     if (response.status === 401) {
-      logOnce("401", "[geoip] 401 unauthorized");
-      return null;
+      return { kind: "auth" };
     }
     if (response.status === 429) {
-      logOnce("429", "[geoip] 429 rate limited");
-      throw Object.assign(new Error("rate limited"), { status: 429 });
-    }
-    if (response.status === 503) {
-      logOnce("503", "[geoip] 503 unavailable");
-      return null;
+      return { kind: "ratelimit" };
     }
     if (!response.ok) {
-      logOnce(`http-${response.status}`, `[geoip] HTTP ${response.status}`);
-      return null;
+      return { kind: "unavailable", reason: `HTTP ${response.status}` };
     }
-    return parseLookupResponse(await response.json());
+    return classifyParsedGeo(parseLookupResponse(await response.json()));
   } catch (error) {
-    if (error && typeof error === "object" && "status" in error && error.status === 429) {
-      throw error;
-    }
-    return null;
+    const reason = error instanceof Error && error.name === "AbortError" ? "timeout" : "network";
+    return { kind: "unavailable", reason };
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function writeCache(ip: string, geo: EndpointGeo | null, ok: boolean): Promise<void> {
+  const now = new Date();
+  await db.ipGeoCache.upsert({
+    where: { ip },
+    create: {
+      ip,
+      countryName: geo?.countryName ?? null,
+      cityName: geo?.cityName ?? null,
+      organization: geo?.organization ?? null,
+      ok,
+      lookedUpAt: now,
+    },
+    update: {
+      countryName: geo?.countryName ?? null,
+      cityName: geo?.cityName ?? null,
+      organization: geo?.organization ?? null,
+      ok,
+      lookedUpAt: now,
+    },
+  });
 }
 
 async function lookupAndCache(ip: string): Promise<EndpointGeo | null> {
@@ -100,35 +115,19 @@ async function lookupAndCache(ip: string): Promise<EndpointGeo | null> {
   }
 
   const work = (async () => {
-    try {
-      const geo = await fetchGeoipLookup(ip);
-      const now = new Date();
-      if (geo) {
-        await db.ipGeoCache.upsert({
-          where: { ip },
-          create: { ip, ...geo, ok: true, lookedUpAt: now },
-          update: { ...geo, ok: true, lookedUpAt: now },
-        });
-        return geo;
-      }
-      await db.ipGeoCache.upsert({
-        where: { ip },
-        create: { ip, countryName: null, cityName: null, organization: null, ok: false, lookedUpAt: now },
-        update: { countryName: null, cityName: null, organization: null, ok: false, lookedUpAt: now },
-      });
-      return null;
-    } catch (error) {
-      const now = new Date();
-      await db.ipGeoCache.upsert({
-        where: { ip },
-        create: { ip, countryName: null, cityName: null, organization: null, ok: false, lookedUpAt: now },
-        update: { ok: false, lookedUpAt: now },
-      });
-      if (error && typeof error === "object" && "status" in error && error.status === 429) {
-        throw error;
-      }
+    const result = await fetchGeoipLookup(ip);
+    if (result.kind === "ok") {
+      await writeCache(ip, result.geo, true);
+      return result.geo;
+    }
+    if (result.kind === "empty" || result.kind === "auth") {
+      await writeCache(ip, null, false);
       return null;
     }
+    if (result.kind === "ratelimit") {
+      throw Object.assign(new Error("rate limited"), { status: 429 });
+    }
+    return null;
   })();
 
   inflight.set(ip, work);
@@ -139,17 +138,26 @@ async function lookupAndCache(ip: string): Promise<EndpointGeo | null> {
   }
 }
 
-async function resolveIp(ip: string, allowApi: () => boolean): Promise<EndpointGeo | null> {
+async function resolveIp(
+  ip: string,
+  allowApi: () => boolean,
+): Promise<{ geo: EndpointGeo | null; source: "cache" | "api" | "skip" }> {
   const cached = await db.ipGeoCache.findUnique({ where: { ip } });
   if (cached && cacheIsFresh(cached)) {
-    return cached.ok ? { countryName: cached.countryName, cityName: cached.cityName, organization: cached.organization } : null;
+    return {
+      geo: cached.ok ? { countryName: cached.countryName, cityName: cached.cityName, organization: cached.organization } : null,
+      source: "cache",
+    };
   }
   if (!allowApi()) {
-    return cached?.ok
-      ? { countryName: cached.countryName, cityName: cached.cityName, organization: cached.organization }
-      : null;
+    return {
+      geo: cached?.ok
+        ? { countryName: cached.countryName, cityName: cached.cityName, organization: cached.organization }
+        : null,
+      source: "skip",
+    };
   }
-  return lookupAndCache(ip);
+  return { geo: await lookupAndCache(ip), source: "api" };
 }
 
 async function mapPool<T>(items: T[], concurrency: number, fn: (item: T) => Promise<void>): Promise<void> {
@@ -164,7 +172,10 @@ async function mapPool<T>(items: T[], concurrency: number, fn: (item: T) => Prom
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
 }
 
-export async function resolveEndpointGeos(endpoints: Array<string | null | undefined>): Promise<Map<string, EndpointGeo>> {
+export async function resolveEndpointGeos(
+  endpoints: Array<string | null | undefined>,
+  options?: { deadlineAt?: number },
+): Promise<Map<string, EndpointGeo>> {
   const resolved = new Map<string, EndpointGeo>();
   if (!isGeoipConfigured()) {
     return resolved;
@@ -181,34 +192,59 @@ export async function resolveEndpointGeos(endpoints: Array<string | null | undef
     return resolved;
   }
 
-  let apiCalls = 0;
+  const deadlineAt = options?.deadlineAt ?? Date.now() + GEOIP_ENRICH_DEADLINE_MS;
+  let tickCalls = 0;
   let stopApi = false;
+  let lookedUp = 0;
+  let cached = 0;
+  let failed = 0;
+  let skipped = 0;
+
   const allowApi = () => {
-    if (stopApi || apiCalls >= GEOIP_MAX_API_PER_TICK) {
+    if (stopApi || Date.now() >= deadlineAt || tickCalls >= GEOIP_MAX_API_PER_TICK) {
       return false;
     }
-    apiCalls += 1;
+    if (!tryConsumeGeoipApiSlot()) {
+      return false;
+    }
+    tickCalls += 1;
     return true;
   };
 
   await mapPool(ips, GEOIP_LOOKUP_CONCURRENCY, async (ip) => {
     try {
-      const geo = await resolveIp(ip, allowApi);
-      if (geo) {
-        resolved.set(ip, geo);
+      const resolvedIp = await resolveIp(ip, allowApi);
+      if (resolvedIp.source === "cache") {
+        cached += 1;
+      } else if (resolvedIp.source === "skip") {
+        skipped += 1;
+      } else if (hasUsefulGeo(resolvedIp.geo)) {
+        lookedUp += 1;
+      } else {
+        failed += 1;
+      }
+      if (hasUsefulGeo(resolvedIp.geo)) {
+        resolved.set(ip, resolvedIp.geo);
       }
     } catch (error) {
+      failed += 1;
       if (error && typeof error === "object" && "status" in error && error.status === 429) {
         stopApi = true;
       }
     }
   });
 
+  console.info(
+    `[geoip] tick lookedUp=${lookedUp} cached=${cached} failed=${failed} skipped=${skipped}`,
+  );
   return resolved;
 }
 
 export async function applyResolvedGeos(geos: Map<string, EndpointGeo>): Promise<void> {
   for (const [ip, geo] of geos) {
+    if (!hasUsefulGeo(geo)) {
+      continue;
+    }
     const match = endpointMatchFilter(ip);
     await db.peer.updateMany({
       where: match,
@@ -218,18 +254,16 @@ export async function applyResolvedGeos(geos: Map<string, EndpointGeo>): Promise
         endpointOrganization: geo.organization,
       },
     });
-    if (geo.countryName || geo.cityName || geo.organization) {
-      await db.peerPresenceEvent.updateMany({
-        where: {
-          AND: [match, { countryName: null, cityName: null, organization: null }],
-        },
-        data: {
-          countryName: geo.countryName,
-          cityName: geo.cityName,
-          organization: geo.organization,
-        },
-      });
-    }
+    await db.peerPresenceEvent.updateMany({
+      where: {
+        AND: [match, { countryName: null, cityName: null, organization: null }],
+      },
+      data: {
+        countryName: geo.countryName,
+        cityName: geo.cityName,
+        organization: geo.organization,
+      },
+    });
   }
 }
 
@@ -240,11 +274,22 @@ export async function enrichServerPeerEndpoints(serverId: string): Promise<void>
   }
 
   try {
-    const peers = await db.peer.findMany({
-      where: { vpnInstance: { serverId } },
-      select: { endpoint: true },
-    });
-    const geos = await resolveEndpointGeos(peers.map((peer) => peer.endpoint));
+    const since = new Date(Date.now() - RAW_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const [peers, events] = await Promise.all([
+      db.peer.findMany({
+        where: { vpnInstance: { serverId } },
+        select: { endpoint: true },
+      }),
+      db.peerPresenceEvent.findMany({
+        where: { peer: { vpnInstance: { serverId } }, occurredAt: { gte: since } },
+        select: { endpoint: true },
+        distinct: ["endpoint"],
+      }),
+    ]);
+    const geos = await resolveEndpointGeos(
+      [...peers.map((peer) => peer.endpoint), ...events.map((event) => event.endpoint)],
+      { deadlineAt: Date.now() + GEOIP_ENRICH_DEADLINE_MS },
+    );
     await applyResolvedGeos(geos);
   } catch (error) {
     const message = error instanceof Error ? error.message : "enrich failed";

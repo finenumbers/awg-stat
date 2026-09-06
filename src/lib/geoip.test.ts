@@ -5,7 +5,9 @@ import {
   cacheIsFresh,
   GEOIP_FAILURE_TTL_MS,
   GEOIP_SUCCESS_TTL_MS,
+  classifyParsedGeo,
   geoipLookupUrl,
+  hasUsefulGeo,
   isGeoipConfigured,
   isLookupableIp,
   parseLookupResponse,
@@ -19,11 +21,14 @@ test("isGeoipConfigured requires both url and key", () => {
   assert.equal(isGeoipConfigured("  https://geoip.example.com  ", "  secret  "), true);
 });
 
-test("geoipLookupUrl accepts origin or /api/v1 and strips trailing slashes", () => {
+test("geoipLookupUrl accepts origin, /api/v1, full lookup path, and docker host", () => {
   assert.equal(geoipLookupUrl("https://geoip.example.com"), "https://geoip.example.com/api/v1/lookup");
   assert.equal(geoipLookupUrl("https://geoip.example.com/"), "https://geoip.example.com/api/v1/lookup");
   assert.equal(geoipLookupUrl("https://geoip.example.com/api/v1"), "https://geoip.example.com/api/v1/lookup");
   assert.equal(geoipLookupUrl("https://geoip.example.com/api/v1/"), "https://geoip.example.com/api/v1/lookup");
+  assert.equal(geoipLookupUrl("https://geoip.example.com/api/v1/lookup"), "https://geoip.example.com/api/v1/lookup");
+  assert.equal(geoipLookupUrl("http://geoip_api:3000"), "http://geoip_api:3000/api/v1/lookup");
+  assert.equal(geoipLookupUrl("http://geoip_api:3000/"), "http://geoip_api:3000/api/v1/lookup");
 });
 
 test("isLookupableIp skips private, loopback, link-local and ULA", () => {
@@ -63,6 +68,25 @@ test("parseLookupResponse reads countryName, cityName, organization", () => {
   });
   assert.equal(parseLookupResponse(null), null);
   assert.equal(parseLookupResponse("nope"), null);
+  assert.deepEqual(
+    parseLookupResponse({
+      country: null,
+      city: { countryName: "Российская Федерация", cityName: "Новосибирск" },
+      asn: { organization: "Rostelecom" },
+    }),
+    {
+      countryName: "Российская Федерация",
+      cityName: "Новосибирск",
+      organization: "Rostelecom",
+    },
+  );
+});
+
+test("classifyParsedGeo does not treat an empty 200 body as success", () => {
+  assert.deepEqual(classifyParsedGeo({ countryName: null, cityName: null, organization: null }), { kind: "empty" });
+  assert.equal(hasUsefulGeo({ countryName: null, cityName: null, organization: null }), false);
+  assert.equal(hasUsefulGeo({ countryName: "X", cityName: null, organization: null }), true);
+  assert.equal(classifyParsedGeo(null).kind, "unavailable");
 });
 
 test("cacheIsFresh uses success and failure TTLs", () => {

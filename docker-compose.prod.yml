@@ -11,6 +11,11 @@ services:
       - default
       - npm_proxy
 
+  poller:
+    networks:
+      - default
+      - npm_proxy
+
 networks:
   npm_proxy:
     external: true
