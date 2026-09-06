@@ -55,7 +55,7 @@ export function SshFields({
               id={`${idPrefix}privateKey`}
               name="privateKey"
               rows={5}
-              className="w-full rounded-md border border-input bg-background p-2 font-mono text-xs"
+              className="w-full rounded-md border border-input bg-background p-2 text-xs"
             />
           </div>
           {method === "PRIVATE_KEY_WITH_PASSPHRASE" && (

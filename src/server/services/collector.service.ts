@@ -23,7 +23,9 @@ import { getSshSessionRegistry } from "@/lib/ssh/session-registry";
 import { isPeerOnline, presenceTransition, previousPresenceOnline } from "@/lib/presence";
 import { POLL_DEADLINE_MS, POLL_INTERVAL_SEC, RAW_RETENTION_DAYS } from "@/server/poll-defaults";
 import { getPollerEpoch, isPollerStopping } from "@/server/poller-runtime";
+import { displayPeerEndpoint } from "@/lib/utils";
 import { getServerSecret } from "@/server/services/identity.service";
+import { enrichServerPeerEndpoints } from "@/server/services/geoip.service";
 import { ensureAppSettings } from "@/server/services/setup.service";
 
 export class CollectorError extends Error {
@@ -31,6 +33,32 @@ export class CollectorError extends Error {
     super(message);
     this.name = "CollectorError";
   }
+}
+
+function endpointHost(endpoint: string | null | undefined): string | null {
+  return displayPeerEndpoint(endpoint)?.host ?? null;
+}
+
+function snapshotGeo(
+  source:
+    | {
+        endpoint?: string | null;
+        endpointCountryName?: string | null;
+        endpointCityName?: string | null;
+        endpointOrganization?: string | null;
+      }
+    | null
+    | undefined,
+  endpoint: string | null | undefined,
+) {
+  if (!source || endpointHost(source.endpoint) !== endpointHost(endpoint)) {
+    return { countryName: null, cityName: null, organization: null };
+  }
+  return {
+    countryName: source.endpointCountryName ?? null,
+    cityName: source.endpointCityName ?? null,
+    organization: source.endpointOrganization ?? null,
+  };
 }
 
 async function sshConfigForServer(serverId: string): Promise<SshConnectionConfig & { expectedHostKeyFingerprint?: string | null }> {
@@ -128,6 +156,7 @@ export async function onboardExistingServer(serverId: string, userId: string | n
   });
 
   await persistPoll(serverId, result.containerName, result.parsed, result.inspect);
+  await enrichServerPeerEndpoints(serverId);
   void userId;
 }
 
@@ -223,6 +252,7 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
       where: { id: serverId },
       data: { lastPollAt: new Date(), lastPollError: null },
     });
+    await enrichServerPeerEndpoints(serverId);
   } catch (error) {
     const stillThere = await db.server.findUnique({
       where: { id: serverId },
@@ -334,6 +364,8 @@ async function persistPoll(
     txDeltaSum += txDelta;
     if (online) onlineCount += 1;
 
+    const hostChanged = endpointHost(prev?.endpoint) !== endpointHost(remote.endpoint);
+    const eventGeo = snapshotGeo(prev, remote.endpoint);
     const peer = await db.peer.upsert({
       where: {
         vpnInstanceId_publicKey: { vpnInstanceId: instance.id, publicKey: remote.publicKey },
@@ -342,6 +374,9 @@ async function persistPoll(
         vpnName: remote.vpnName,
         allowedIps: remote.allowedIps,
         endpoint: remote.endpoint,
+        ...(hostChanged
+          ? { endpointCountryName: null, endpointCityName: null, endpointOrganization: null }
+          : {}),
         status: "ACTIVE",
         lastSeenAt: now,
         removedAt: null,
@@ -379,6 +414,7 @@ async function persistPoll(
                 kind,
                 occurredAt: now,
                 endpoint: remote.endpoint,
+                ...eventGeo,
               },
             }),
           ]
@@ -403,9 +439,10 @@ async function persistPoll(
     ]);
 
     if (!kind && remote.endpoint && lastEvent && !lastEvent.endpoint) {
+      const backfillGeo = snapshotGeo(peer, remote.endpoint);
       await db.peerPresenceEvent.update({
         where: { id: lastEvent.id },
-        data: { endpoint: remote.endpoint },
+        data: { endpoint: remote.endpoint, ...backfillGeo },
       });
       lastEvent.endpoint = remote.endpoint;
     }
@@ -435,6 +472,9 @@ async function persistPoll(
                 kind,
                 occurredAt: now,
                 endpoint: peer.endpoint,
+                countryName: peer.endpointCountryName,
+                cityName: peer.endpointCityName,
+                organization: peer.endpointOrganization,
               },
             }),
           ]
@@ -463,5 +503,6 @@ export async function pruneOldSamples() {
   await db.serverSample.deleteMany({ where: { capturedAt: { lt: rawCutoff } } });
   await db.peerPresenceEvent.deleteMany({ where: { occurredAt: { lt: rawCutoff } } });
   await db.peerHourlySample.deleteMany({ where: { hourStart: { lt: hourlyCutoff } } });
+  await db.ipGeoCache.deleteMany({ where: { lookedUpAt: { lt: rawCutoff } } });
 }
 

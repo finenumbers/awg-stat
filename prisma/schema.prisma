@@ -201,9 +201,12 @@ model Peer {
   vpnInstance   VpnInstance @relation(fields: [vpnInstanceId], references: [id], onDelete: Cascade)
   publicKey     String
   vpnName       String?
-  allowedIps    String?
-  endpoint      String?
-  status        PeerStatus @default(ACTIVE)
+  allowedIps             String?
+  endpoint               String?
+  endpointCountryName    String?
+  endpointCityName       String?
+  endpointOrganization   String?
+  status                 PeerStatus @default(ACTIVE)
   firstSeenAt   DateTime   @default(now())
   lastSeenAt    DateTime?
   removedAt     DateTime?
@@ -224,12 +227,26 @@ model PeerPresenceEvent {
   peerId     String
   peer       Peer                   @relation(fields: [peerId], references: [id], onDelete: Cascade)
   kind       PeerPresenceEventKind
-  occurredAt DateTime
-  endpoint   String?
+  occurredAt   DateTime
+  endpoint     String?
+  countryName  String?
+  cityName     String?
+  organization String?
 
   @@unique([peerId, occurredAt])
   @@index([occurredAt])
   @@map("peer_presence_event")
+}
+
+model IpGeoCache {
+  ip           String   @id
+  countryName  String?
+  cityName     String?
+  organization String?
+  ok           Boolean
+  lookedUpAt   DateTime
+
+  @@map("ip_geo_cache")
 }
 
 model PeerSample {

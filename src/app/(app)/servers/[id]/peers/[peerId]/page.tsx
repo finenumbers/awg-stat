@@ -58,12 +58,12 @@ export default async function PeerPage({
         <div className="mt-1 flex items-baseline justify-between gap-4">
           <h1 className="min-w-0 text-2xl font-semibold tracking-tight">{name}</h1>
           {internalIp ? (
-            <p className="shrink-0 font-mono text-2xl font-semibold tabular-nums tracking-tight text-right">
+            <p className="shrink-0 text-2xl font-semibold tabular-nums tracking-tight text-right">
               {internalIp}
             </p>
           ) : null}
         </div>
-        <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{peer.publicKey}</p>
+        <p className="mt-1 break-all text-xs text-muted-foreground">{peer.publicKey}</p>
       </div>
 
       {server.lastPollError ? (
@@ -111,6 +111,11 @@ export default async function PeerPage({
         items={presenceEvents.items}
         total={presenceEvents.total}
         currentEndpoint={peer.endpoint}
+        currentGeo={{
+          countryName: peer.endpointCountryName,
+          cityName: peer.endpointCityName,
+          organization: peer.endpointOrganization,
+        }}
       />
     </main>
   );

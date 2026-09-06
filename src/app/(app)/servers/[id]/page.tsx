@@ -11,6 +11,7 @@ import {
   activeAwgVersionLabel,
   displayPeerName,
   formatBytes,
+  formatPeerEndpointLine,
   formatDateTime,
   formatRelativeHandshake,
   formatUptime,
@@ -155,10 +156,16 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
                           <p className="text-xs text-muted-foreground">
                             Handshake: {sample ? formatRelativeHandshake(sample.handshakeUnix) : "—"}
                             {peer.allowedIps ? ` · ${peer.allowedIps}` : ""}
-                            {peer.endpoint ? ` · ${peer.endpoint}` : ""}
+                            {peer.endpoint
+                              ? ` · ${formatPeerEndpointLine(peer.endpoint, {
+                                  countryName: peer.endpointCountryName,
+                                  cityName: peer.endpointCityName,
+                                  organization: peer.endpointOrganization,
+                                }) ?? peer.endpoint}`
+                              : ""}
                           </p>
                           {!peer.vpnName && (
-                            <p className="font-mono text-[11px] text-muted-foreground">{peer.publicKey}</p>
+                            <p className="text-[11px] text-muted-foreground">{peer.publicKey}</p>
                           )}
                         </div>
                         <div className="flex items-center gap-4 sm:min-w-[280px] sm:justify-end">

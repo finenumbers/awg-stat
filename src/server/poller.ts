@@ -4,6 +4,7 @@ import { POLL_DEADLINE_MS, POLL_INTERVAL_SEC, POLLER_LEASE_TTL_SEC } from "@/ser
 import { clearAllQueues, pruneQueues, queueFor } from "@/server/poller-queues";
 import { getPollerEpoch, getPollerState, isPollerStopping, pollerRuntime } from "@/server/poller-runtime";
 import { pollServer, pruneOldSamples } from "@/server/services/collector.service";
+import { warnIfGeoipDisabled } from "@/server/services/geoip.service";
 import { ensureAppSettings } from "@/server/services/setup.service";
 
 export { getPollerEpoch, getPollerState, isPollerStopping };
@@ -117,6 +118,7 @@ export async function startPoller() {
       });
     }, POLL_INTERVAL_SEC * 1000);
     console.info("[poller] interval started");
+    warnIfGeoipDisabled();
     await tick();
   } catch (error) {
     if (!pollerRuntime.timer) {

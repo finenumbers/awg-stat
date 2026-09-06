@@ -45,7 +45,7 @@ docker compose up -d --build
    - URL: `https://github.com/finenumbers/awg-stat`
    - Compose path: `deploy/portainer.stack.yml`
    - Branch: `main`
-3. Env: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `APP_ENCRYPTION_KEY` (`openssl rand -base64 32`), `APP_URL` (публичный HTTPS **без** `/` на конце).
+3. Env: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `APP_ENCRYPTION_KEY` (`openssl rand -base64 32`), `APP_URL` (публичный HTTPS **без** `/` на конце). Для геолокации endpoint: `GEOIP_API_URL` (публичный HTTPS origin GeoIP, без `/` на конце) и `GEOIP_API_KEY` (`X-API-Key`). Пустые значения отключают lookup, опрос не падает.
 4. Включите **Re-pull image** при обновлении.
 5. Настройте NPM по инструкции ниже.
 
