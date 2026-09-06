@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 
+import { InfoblockBody, INFOBLOCK_CHROME } from "@/components/charts/infoblock";
 import { TrafficWindows } from "@/components/charts/traffic-windows";
 import { PresenceEventsCard } from "@/components/peers/presence-events-card";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { peerPresence, type PeerPresenceView } from "@/lib/presence";
 import { cn, displayPeerInternalIp, displayPeerName, formatDateTime, formatRelativeHandshake } from "@/lib/utils";
 import { getPeerDetail, listPeerPresenceEvents, peerTrafficWindows } from "@/server/services/server.service";
@@ -77,28 +77,18 @@ export default async function PeerPage({
 
       <TrafficWindows
         firstCard={
-          <Card className={statusCardClass(presence)}>
-            <CardHeader className="pb-2">
-              <CardDescription
-                className={cn(
-                  (presence.kind === "online" || presence.kind === "offline") && "text-current/70",
-                )}
-              >
-                Статус
-              </CardDescription>
-              <CardTitle className="text-2xl">{presence.label}</CardTitle>
-            </CardHeader>
-            <CardContent
-              className={cn(
-                "text-xs",
+          <div className={cn(INFOBLOCK_CHROME, statusCardClass(presence))}>
+            <InfoblockBody
+              label="Статус"
+              value={presence.label}
+              caption={`Handshake: ${latest ? formatRelativeHandshake(latest.handshakeUnix) : "—"}`}
+              mutedClassName={
                 presence.kind === "online" || presence.kind === "offline"
                   ? "text-current/70"
-                  : "text-muted-foreground",
-              )}
-            >
-              Handshake: {latest ? formatRelativeHandshake(latest.handshakeUnix) : "—"}
-            </CardContent>
-          </Card>
+                  : "text-muted-foreground"
+              }
+            />
+          </div>
         }
         windows={windows}
         chartTitle="Трафик пира"

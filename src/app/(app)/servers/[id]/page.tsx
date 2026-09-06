@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { InfoblockBody, INFOBLOCK_CHROME } from "@/components/charts/infoblock";
 import { Sparkline } from "@/components/charts/traffic-chart";
 import { TrafficWindows } from "@/components/charts/traffic-windows";
 import { WindowTrafficValues } from "@/components/charts/window-traffic";
@@ -98,17 +99,13 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
 
       <TrafficWindows
         firstCard={
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Пиры</CardDescription>
-              <CardTitle className="text-2xl tabular-nums">
-                {latest ? `${latest.onlineCount} / ${latest.peerCount}` : "—"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">
-              сессии WG / всего по последнему опросу
-            </CardContent>
-          </Card>
+          <div className={INFOBLOCK_CHROME}>
+            <InfoblockBody
+              label="Пиры"
+              value={latest ? `${latest.onlineCount} / ${latest.peerCount}` : "—"}
+              caption="сессии WG"
+            />
+          </div>
         }
         windows={windows}
         chartTitle="Трафик сервера"

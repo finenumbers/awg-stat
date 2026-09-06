@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 
+import { InfoblockBody, INFOBLOCK_CHROME } from "@/components/charts/infoblock";
 import { TrafficChart, type TrafficPoint } from "@/components/charts/traffic-chart";
 import { WindowTrafficValues } from "@/components/charts/window-traffic";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,23 +30,17 @@ const UNIT_LABELS: Record<TrafficWindowId, string> = {
   "30d": "За час",
 };
 
-const CHART_HINTS: Record<TrafficWindowId, string> = {
-  "30m": "Объём за каждый опрос. Наведите на график, чтобы увидеть точное время и байты.",
-  "24h": "Объём за каждую минуту. Наведите на график, чтобы увидеть точное время и байты.",
-  "30d": "Объём за каждый час. Наведите на график, чтобы увидеть точное время и байты.",
-};
-
 export type ProtocolScale = "poll";
 
 function windowMaxBytes(points: TrafficPoint[]): number {
   return Math.max(0, ...points.map((point) => point.rx + point.tx));
 }
 
-function chartHint(id: TrafficWindowId, protocolScaleActive: boolean): string {
+function chartHint(id: TrafficWindowId, protocolScaleActive: boolean): string | null {
   if (id === "30m" && protocolScaleActive) {
     return "Масштаб служебного трафика (keepalive/handshake). Ось Y — байты за опрос, не скорость.";
   }
-  return CHART_HINTS[id];
+  return null;
 }
 
 function WindowCard({
@@ -67,18 +62,17 @@ function WindowCard({
       aria-pressed={active}
       onClick={() => onSelect(id)}
       className={cn(
-        "rounded-lg border bg-card p-6 text-left text-card-foreground shadow-sm transition-colors",
+        INFOBLOCK_CHROME,
+        "text-left transition-colors",
         active ? "border-yellow-400 bg-yellow-200" : "hover:bg-accent/40",
         stale && !active && "opacity-70",
       )}
     >
-      <p className="text-sm text-muted-foreground">{WINDOW_LABELS[id]}</p>
-      <p className="mt-1.5 text-2xl font-semibold leading-none tracking-tight tabular-nums">
-        {formatBytes(totals.rx + totals.tx)}
-      </p>
-      <p className="mt-4 text-xs text-muted-foreground">
-        <WindowTrafficValues rx={totals.rx} tx={totals.tx} />
-      </p>
+      <InfoblockBody
+        label={WINDOW_LABELS[id]}
+        value={formatBytes(totals.rx + totals.tx)}
+        caption={<WindowTrafficValues rx={totals.rx} tx={totals.tx} />}
+      />
       {stale ? <p className="mt-2 text-xs text-amber-800">нет свежих опросов</p> : null}
     </button>
   );
@@ -115,6 +109,7 @@ export function TrafficWindows({
         ? `Последний опрос: ${lastPollLabel}`
         : "Появится после двух свежих опросов."
       : undefined;
+  const hint = chartHint(active, protocolScaleActive);
 
   return (
     <div className="space-y-6">
@@ -134,7 +129,7 @@ export function TrafficWindows({
       <Card>
         <CardHeader>
           <CardTitle>{chartTitle}</CardTitle>
-          <CardDescription>{chartHint(active, protocolScaleActive)}</CardDescription>
+          {hint ? <CardDescription>{hint}</CardDescription> : null}
         </CardHeader>
         <CardContent>
           <TrafficChart
