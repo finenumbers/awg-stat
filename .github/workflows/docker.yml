@@ -48,5 +48,5 @@ jobs:
             *.cache-from=type=gha
             *.cache-to=type=gha,mode=max
         env:
-          APP_VERSION: 0.1.14
+          APP_VERSION: 0.1.15
           BUILD_SHA: ${{ github.sha }}
