@@ -1,4 +1,4 @@
-import type { AuthMethod } from "@prisma/client";
+import { Prisma, type AuthMethod } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import type { SshAuthInput } from "@/lib/validations/identity";
@@ -176,8 +176,21 @@ export async function createAndOnboardServer(input: ServerInput, ssh: SshAuthInp
   return server;
 }
 
+function isPrismaNotFound(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025";
+}
+
 export async function deleteServer(id: string, userId: string) {
-  await db.server.delete({ where: { id } });
+  try {
+    await db.server.delete({ where: { id } });
+  } catch (error) {
+    if (!isPrismaNotFound(error)) {
+      throw error;
+    }
+  }
+  await db.auditEvent.deleteMany({
+    where: { entityType: "server", entityId: id },
+  });
   await createAuditEvent({
     userId,
     action: "SERVER_DELETED",

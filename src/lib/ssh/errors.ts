@@ -20,6 +20,10 @@ export function isCollectorError(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { name?: string }).name === "CollectorError";
 }
 
+export function isSshSessionRevokedError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { name?: string }).name === "SshSessionRevokedError";
+}
+
 export function isSshAuthError(error: unknown): boolean {
   const level = errorLevel(error);
   if (level === "client-authentication") {
@@ -30,7 +34,7 @@ export function isSshAuthError(error: unknown): boolean {
 }
 
 export function isSshTransportError(error: unknown): boolean {
-  if (isCollectorError(error) || isSshAuthError(error)) {
+  if (isCollectorError(error) || isSshAuthError(error) || isSshSessionRevokedError(error)) {
     return false;
   }
 
@@ -51,7 +55,7 @@ export function isSshTransportError(error: unknown): boolean {
 }
 
 export function shouldRetrySshPoll(error: unknown, alreadyRetried: boolean): boolean {
-  if (alreadyRetried || isCollectorError(error) || isSshAuthError(error)) {
+  if (alreadyRetried || isCollectorError(error) || isSshAuthError(error) || isSshSessionRevokedError(error)) {
     return false;
   }
   return isSshTransportError(error);

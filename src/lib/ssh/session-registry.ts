@@ -5,6 +5,13 @@ import { SESSION_MAX_AGE_MS } from "@/server/poll-defaults";
 
 export type SshClientFactory = () => SshSession;
 
+export class SshSessionRevokedError extends Error {
+  constructor() {
+    super("SSH session revoked");
+    this.name = "SshSessionRevokedError";
+  }
+}
+
 type SessionEntry = {
   client: SshSession;
   fingerprint: string;
@@ -27,6 +34,7 @@ export class SshSessionRegistry {
   private readonly createClient: SshClientFactory;
   private readonly entries = new Map<string, SessionEntry>();
   private readonly inflight = new Map<string, Promise<SessionEntry>>();
+  private readonly generations = new Map<string, number>();
 
   constructor(options?: { maxAgeMs?: number; createClient?: SshClientFactory }) {
     this.maxAgeMs = options?.maxAgeMs ?? SESSION_MAX_AGE_MS;
@@ -70,6 +78,8 @@ export class SshSessionRegistry {
   }
 
   invalidate(serverId: string): void {
+    this.bump(serverId);
+    this.inflight.delete(serverId);
     const entry = this.entries.get(serverId);
     if (!entry) {
       return;
@@ -80,7 +90,7 @@ export class SshSessionRegistry {
 
   prune(keepIds: Iterable<string>): void {
     const keep = new Set(keepIds);
-    for (const serverId of [...this.entries.keys()]) {
+    for (const serverId of this.knownIds()) {
       if (!keep.has(serverId)) {
         this.invalidate(serverId);
       }
@@ -88,13 +98,21 @@ export class SshSessionRegistry {
   }
 
   closeAll(): void {
-    for (const serverId of [...this.entries.keys()]) {
+    for (const serverId of this.knownIds()) {
       this.invalidate(serverId);
     }
   }
 
   size(): number {
     return this.entries.size;
+  }
+
+  private knownIds(): string[] {
+    return [...new Set([...this.entries.keys(), ...this.inflight.keys()])];
+  }
+
+  private bump(serverId: string): void {
+    this.generations.set(serverId, (this.generations.get(serverId) ?? 0) + 1);
   }
 
   private isReusable(entry: SessionEntry, fingerprint: string): boolean {
@@ -108,8 +126,13 @@ export class SshSessionRegistry {
   }
 
   private async open(serverId: string, config: SshConnectionConfig, fingerprint: string): Promise<SessionEntry> {
+    const generation = this.generations.get(serverId) ?? 0;
     const client = this.createClient();
     const { hostKeyFingerprint } = await client.connect(config);
+    if ((this.generations.get(serverId) ?? 0) !== generation) {
+      client.end();
+      throw new SshSessionRevokedError();
+    }
     const entry: SessionEntry = {
       client,
       fingerprint,

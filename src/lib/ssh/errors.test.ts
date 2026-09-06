@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { canCommitPoll, isSshAuthError, isSshTransportError, shouldRetrySshPoll } from "./errors";
+import { canCommitPoll, isSshAuthError, isSshSessionRevokedError, isSshTransportError, shouldRetrySshPoll } from "./errors";
+import { SshSessionRevokedError } from "./session-registry";
 
 test("classifies keepalive and disconnect as transport", () => {
   const timeout = Object.assign(new Error("Keepalive timeout"), { level: "client-timeout" });
@@ -28,6 +29,13 @@ test("retries transport once and never retries command or auth", () => {
   assert.equal(shouldRetrySshPoll(collector, false), false);
   const auth = Object.assign(new Error("Permission denied"), { level: "client-authentication" });
   assert.equal(shouldRetrySshPoll(auth, false), false);
+});
+
+test("does not treat a revoked session as transport or retryable", () => {
+  const revoked = new SshSessionRevokedError();
+  assert.equal(isSshSessionRevokedError(revoked), true);
+  assert.equal(isSshTransportError(revoked), false);
+  assert.equal(shouldRetrySshPoll(revoked, false), false);
 });
 
 test("commit is allowed only for the same live epoch", () => {

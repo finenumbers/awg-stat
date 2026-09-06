@@ -192,17 +192,20 @@ async function pollRemote(
 }
 
 export async function pollServer(serverId: string, options?: { deadlineMs?: number; epoch?: number | null }) {
-  const server = await db.server.findUniqueOrThrow({
+  const server = await db.server.findUnique({
     where: { id: serverId },
     include: { vpnInstance: true },
   });
+  if (!server) {
+    return;
+  }
   const prefix: DockerPrefix = server.dockerAccess === "SUDO_N_DOCKER" ? "sudo -n docker" : "docker";
   const containerName = server.vpnInstance?.containerName ?? "amnezia-awg2";
-  const config = await sshConfigForServer(serverId);
   const deadlineMs = options?.deadlineMs ?? POLL_DEADLINE_MS;
   const startedEpoch = options?.epoch === undefined ? getPollerEpoch() : options.epoch;
 
   try {
+    const config = await sshConfigForServer(serverId);
     const result = await pollRemote(serverId, config, prefix, containerName, deadlineMs);
     if (!canWritePoll(startedEpoch)) {
       return;
@@ -221,6 +224,13 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
       data: { lastPollAt: new Date(), lastPollError: null },
     });
   } catch (error) {
+    const stillThere = await db.server.findUnique({
+      where: { id: serverId },
+      select: { id: true },
+    });
+    if (!stillThere) {
+      return;
+    }
     const message = error instanceof Error ? error.message : "Ошибка опроса";
     console.error(`[collector] poll failed server=${serverId}: ${message}`);
     if (canWritePoll(startedEpoch)) {
