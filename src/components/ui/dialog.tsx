@@ -40,6 +40,11 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
+      onCancel={(event) => {
+        if (closeDisabled) {
+          event.preventDefault();
+        }
+      }}
       onClose={onClose}
       className={cn(
         "w-[calc(100%-2rem)] max-w-lg rounded-xl border bg-card p-0 text-card-foreground shadow-xl backdrop:bg-black/40",

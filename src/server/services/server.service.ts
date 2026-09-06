@@ -163,17 +163,19 @@ export async function getPeerDetail(serverId: string, peerId: string) {
 }
 
 export async function createAndOnboardServer(input: ServerInput, ssh: SshAuthInput, userId: string) {
-  const server = await db.server.create({
-    data: {
-      name: input.name,
-      host: input.host.trim(),
-      port: input.port,
-      sshUsername: ssh.username,
-      sshAuthMethod: ssh.authMethod as AuthMethod,
-    },
+  const server = await db.$transaction(async (tx) => {
+    const created = await tx.server.create({
+      data: {
+        name: input.name,
+        host: input.host.trim(),
+        port: input.port,
+        sshUsername: ssh.username,
+        sshAuthMethod: ssh.authMethod as AuthMethod,
+      },
+    });
+    await writeServerCredential(created.id, ssh, tx);
+    return created;
   });
-
-  await writeServerCredential(server.id, ssh);
 
   try {
     await onboardExistingServer(server.id, userId);
@@ -283,15 +285,31 @@ export async function deleteServer(id: string, userId: string): Promise<{ name: 
 }
 
 export async function peerTraffic24h(peerId: string) {
+  const byPeer = await peersTraffic24h([peerId]);
+  return byPeer.get(peerId) ?? { rx: 0n, tx: 0n };
+}
+
+export async function peersTraffic24h(peerIds: string[]) {
+  const totals = new Map<string, { rx: bigint; tx: bigint }>();
+  for (const peerId of peerIds) {
+    totals.set(peerId, { rx: 0n, tx: 0n });
+  }
+  if (peerIds.length === 0) {
+    return totals;
+  }
   const since = new Date(Date.now() - MS_24H);
-  const agg = await db.peerSample.aggregate({
-    where: { peerId, capturedAt: { gte: since } },
+  const rows = await db.peerSample.groupBy({
+    by: ["peerId"],
+    where: { peerId: { in: peerIds }, capturedAt: { gte: since } },
     _sum: { rxDelta: true, txDelta: true },
   });
-  return {
-    rx: agg._sum.rxDelta ?? 0n,
-    tx: agg._sum.txDelta ?? 0n,
-  };
+  for (const row of rows) {
+    totals.set(row.peerId, {
+      rx: row._sum.rxDelta ?? 0n,
+      tx: row._sum.txDelta ?? 0n,
+    });
+  }
+  return totals;
 }
 
 export async function peerTrafficWindows(peerId: string): Promise<TrafficWindowsView> {

@@ -121,6 +121,60 @@ test("parses docker inspect false without inventing a start time", () => {
   assert.equal(parsed.hostListenPort, null);
 });
 
+test("empty transfer and handshake are ok when awg returned interface identity", () => {
+  const parsed = parsePollOutput(
+    sectioned({
+      "public-key": `awg0\t${KEY_A}`,
+      "listen-port": "awg0\t55424",
+      peers: "",
+      "latest-handshakes": "",
+      transfer: "",
+    }),
+  );
+  assert.equal(parsed.transferOk, true);
+  assert.equal(parsed.handshakeOk, true);
+  assert.equal(parsed.peers.length, 0);
+  assert.equal(parsed.serverPublicKey, KEY_A);
+});
+
+test("empty transfer without interface identity is not ok", () => {
+  const parsed = parsePollOutput(
+    sectioned({
+      "public-key": "",
+      "listen-port": "",
+      "latest-handshakes": "",
+      transfer: "",
+    }),
+  );
+  assert.equal(parsed.transferOk, false);
+  assert.equal(parsed.handshakeOk, false);
+});
+
+test("missing transfer section is not ok even with a public key", () => {
+  const parsed = parsePollOutput(
+    sectioned({
+      "public-key": `awg0\t${KEY_A}`,
+      "listen-port": "awg0\t55424",
+      "latest-handshakes": "",
+    }),
+  );
+  assert.equal(parsed.transferOk, false);
+  assert.equal(parsed.handshakeOk, true);
+});
+
+test("garbage transfer is not ok even with a public key", () => {
+  const parsed = parsePollOutput(
+    sectioned({
+      "public-key": `awg0\t${KEY_A}`,
+      "listen-port": "awg0\t55424",
+      "latest-handshakes": "",
+      transfer: "awg: Unable to access interface: No such device",
+    }),
+  );
+  assert.equal(parsed.transferOk, false);
+  assert.equal(parsed.handshakeOk, true);
+});
+
 test("selects running amnezia-awg2 and does not invent containers", () => {
   const rows = parseDockerPs("amnezia-awg2\trunning\namnezia-awg\texited\namnezia-dns\trunning\n");
   assert.equal(rows.some((row) => row.name === "amnezia-dns"), false);

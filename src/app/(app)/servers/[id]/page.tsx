@@ -16,7 +16,7 @@ import {
   formatRelativeHandshake,
   formatUptime,
 } from "@/lib/utils";
-import { getServerDetail, peerTraffic24h, serverTrafficWindows } from "@/server/services/server.service";
+import { getServerDetail, peersTraffic24h, serverTrafficWindows } from "@/server/services/server.service";
 
 export const dynamic = "force-dynamic";
 
@@ -38,11 +38,11 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
   }
 
   const peers = server.vpnInstance?.peers ?? [];
-  const [traffic24h, windows] = await Promise.all([
-    Promise.all(peers.map(async (peer) => ({ id: peer.id, ...(await peerTraffic24h(peer.id)) }))),
+  const [byPeer, windows] = await Promise.all([
+    peersTraffic24h(peers.map((peer) => peer.id)),
     serverTrafficWindows(server.id),
   ]);
-  const byPeer = new Map(traffic24h.map((item) => [item.id, item]));
+  const traffic24h = [...byPeer.values()];
   const latest = server.serverSamples[0];
   const version = activeAwgVersionLabel(server.vpnInstance?.awgVersion);
   const pollBadge = serverPollBadge({

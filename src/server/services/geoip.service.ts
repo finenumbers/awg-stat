@@ -120,7 +120,7 @@ async function lookupAndCache(ip: string): Promise<EndpointGeo | null> {
       await writeCache(ip, result.geo, true);
       return result.geo;
     }
-    if (result.kind === "empty" || result.kind === "auth") {
+    if (result.kind === "empty" || result.kind === "auth" || result.kind === "unavailable") {
       await writeCache(ip, null, false);
       return null;
     }

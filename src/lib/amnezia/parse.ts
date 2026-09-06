@@ -175,22 +175,22 @@ export function parsePollOutput(raw: string): ParsedPoll {
     peer.allowedIps = rest && rest !== "(none)" ? rest : null;
   });
 
-  let handshakeOk = false;
+  let handshakeParsed = false;
   parsePeerMap(sections.get("latest-handshakes") ?? "", (parts) => {
     if (parts.length < 2) return;
     const peer = ensure(parts[0]);
     const value = BigInt(parts[1] || "0");
     peer.handshakeUnix = value;
-    handshakeOk = true;
+    handshakeParsed = true;
   });
 
-  let transferOk = false;
+  let transferParsed = false;
   parsePeerMap(sections.get("transfer") ?? "", (parts) => {
     if (parts.length < 3) return;
     const peer = ensure(parts[0]);
     peer.rxBytes = BigInt(parts[1] || "0");
     peer.txBytes = BigInt(parts[2] || "0");
-    transferOk = true;
+    transferParsed = true;
   });
 
   const names = parseClientsTable(sections.get("clients-table") ?? "");
@@ -215,16 +215,30 @@ export function parsePollOutput(raw: string): ParsedPoll {
 
   const listenPortRaw = listenSection.value;
   const listenPort = listenPortRaw && /^\d+$/.test(listenPortRaw) ? Number(listenPortRaw) : null;
+  const serverPublicKey =
+    publicKeySection.value && isPublicKey(publicKeySection.value) ? publicKeySection.value : null;
+  const hasInterfaceIdentity = Boolean(serverPublicKey || listenPort);
 
   return {
     interfaceName: publicKeySection.iface ?? listenSection.iface,
-    serverPublicKey: publicKeySection.value && isPublicKey(publicKeySection.value) ? publicKeySection.value : null,
+    serverPublicKey,
     listenPort,
     awgVersion,
     peers: [...peers.values()],
-    transferOk,
-    handshakeOk,
+    transferOk: selectorOk(sections.get("transfer"), transferParsed, hasInterfaceIdentity),
+    handshakeOk: selectorOk(sections.get("latest-handshakes"), handshakeParsed, hasInterfaceIdentity),
   };
+}
+
+function selectorOk(
+  sectionBody: string | undefined,
+  parsedAnyPeer: boolean,
+  hasInterfaceIdentity: boolean,
+): boolean {
+  if (parsedAnyPeer) {
+    return true;
+  }
+  return sectionBody !== undefined && !sectionBody.trim() && hasInterfaceIdentity;
 }
 
 export function computeDelta(current: bigint, previous: bigint | null): bigint {

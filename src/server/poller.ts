@@ -74,7 +74,6 @@ async function tick() {
     return;
   }
 
-  await ensureAppSettings();
   const servers = await db.server.findMany({ select: { id: true, lastPollAt: true } });
   const liveIds = servers.map((server) => server.id);
   getSshSessionRegistry().prune(liveIds);
@@ -111,6 +110,7 @@ export async function startPoller() {
   pollerRuntime.stopping = false;
 
   try {
+    await ensureAppSettings();
     pollerRuntime.timer = setInterval(() => {
       void tick().catch((error) => {
         console.error("[poller] tick failed", error);

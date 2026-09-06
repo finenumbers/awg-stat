@@ -29,6 +29,7 @@ export function ServerSettingsDialog({
         description={`SSH ${username}. Данные только для этого сервера, не из общих Настроек.`}
       >
         <ServerIdentityForm
+          key={`${open}-${username}-${authMethod}`}
           serverId={serverId}
           username={username}
           authMethod={authMethod}

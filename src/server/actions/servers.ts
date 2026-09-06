@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
 import { requireSession } from "@/lib/session";
@@ -8,6 +9,17 @@ import { serverSchema } from "@/lib/validations/server";
 import { updateServerSsh } from "@/server/services/identity.service";
 import { createAndOnboardServer, deleteServer } from "@/server/services/server.service";
 import type { ActionResult } from "@/types/action-result";
+
+function isDuplicateServerHostPort(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+    return false;
+  }
+  const target = error.meta?.target;
+  if (Array.isArray(target)) {
+    return target.includes("host") && target.includes("port");
+  }
+  return typeof target === "string" && target.includes("host") && target.includes("port");
+}
 
 export async function createServerAction(formData: FormData): Promise<ActionResult<{ id: string }>> {
   const session = await requireSession();
@@ -29,6 +41,9 @@ export async function createServerAction(formData: FormData): Promise<ActionResu
     revalidatePath("/", "layout");
     return { ok: true, data: { id: server.id } };
   } catch (error) {
+    if (isDuplicateServerHostPort(error)) {
+      return { ok: false, error: "Сервер с таким хостом и портом уже добавлен" };
+    }
     return { ok: false, error: error instanceof Error ? error.message : "Не удалось подключить сервер" };
   }
 }

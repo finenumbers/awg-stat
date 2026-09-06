@@ -47,6 +47,14 @@ export const sshAuthUpdateSchema = z
 export type SshAuthInput = z.infer<typeof sshAuthSchema>;
 export type SshAuthUpdateInput = z.infer<typeof sshAuthUpdateSchema>;
 
+export function sshUpdateRequiresSecret(
+  storedMethod: string,
+  nextMethod: string,
+  hasNewSecret: boolean,
+): boolean {
+  return !hasNewSecret && storedMethod !== nextMethod;
+}
+
 export function parseSshAuthFromFormData(formData: FormData, mode: "create" | "update") {
   const payload = {
     username: formData.get("username"),

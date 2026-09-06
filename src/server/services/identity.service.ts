@@ -1,10 +1,12 @@
-import type { AuthMethod } from "@prisma/client";
+import type { AuthMethod, Prisma } from "@prisma/client";
 
 import { decryptCredential, encryptCredential } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import type { CredentialPayload } from "@/lib/crypto";
-import type { SshAuthInput, SshAuthUpdateInput } from "@/lib/validations/identity";
+import { sshUpdateRequiresSecret, type SshAuthInput, type SshAuthUpdateInput } from "@/lib/validations/identity";
 import { createAuditEvent } from "@/server/services/audit.service";
+
+const SSH_METHOD_SECRET_REQUIRED = "Укажите пароль или ключ";
 
 export async function getServerSecret(serverId: string): Promise<CredentialPayload> {
   const cred = await db.serverCredential.findUnique({ where: { serverId } });
@@ -14,13 +16,17 @@ export async function getServerSecret(serverId: string): Promise<CredentialPaylo
   return decryptCredential(cred);
 }
 
-export async function writeServerCredential(serverId: string, input: SshAuthInput | SshAuthUpdateInput) {
+export async function writeServerCredential(
+  serverId: string,
+  input: SshAuthInput | SshAuthUpdateInput,
+  client: Pick<Prisma.TransactionClient, "serverCredential"> = db,
+) {
   const blob = encryptCredential({
     password: input.password,
     privateKey: input.privateKey,
     passphrase: input.passphrase,
   });
-  await db.serverCredential.upsert({
+  await client.serverCredential.upsert({
     where: { serverId },
     update: blob,
     create: { serverId, ...blob },
@@ -34,6 +40,9 @@ export async function updateServerSsh(serverId: string, input: SshAuthUpdateInpu
   }
 
   const hasNewSecret = Boolean(input.password || input.privateKey);
+  if (sshUpdateRequiresSecret(server.sshAuthMethod, input.authMethod, hasNewSecret)) {
+    throw new Error(SSH_METHOD_SECRET_REQUIRED);
+  }
   if (hasNewSecret) {
     await writeServerCredential(serverId, input);
   }
@@ -42,7 +51,7 @@ export async function updateServerSsh(serverId: string, input: SshAuthUpdateInpu
     where: { id: serverId },
     data: {
       sshUsername: input.username,
-      sshAuthMethod: input.authMethod as AuthMethod,
+      ...(hasNewSecret ? { sshAuthMethod: input.authMethod as AuthMethod } : {}),
     },
   });
 
