@@ -18,7 +18,7 @@ export default async function OverviewPage() {
     <main className="w-full space-y-8 p-8">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Мониторинг серверов AmneziaVPN</h1>
-        <p className="ml-auto text-sm text-muted-foreground">Объем БД: {formatDbSizeGb(databaseSizeBytes)}</p>
+        <p className="ml-auto text-sm font-bold text-black">Объем БД: {formatDbSizeGb(databaseSizeBytes)}</p>
       </div>
 
       <Suspense fallback={null}>
@@ -123,8 +123,8 @@ export default async function OverviewPage() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        Сессия WG {ONLINE_THRESHOLD_SEC} с или трафик в опросе · опрос каждые {POLL_INTERVAL_SEC} с ·
-        мелкий трафик — keepalive/handshake
+        Сессия WG {ONLINE_THRESHOLD_SEC} с · опрос каждые {POLL_INTERVAL_SEC} с · мелкий трафик на
+        графике — keepalive/handshake
       </p>
     </main>
   );

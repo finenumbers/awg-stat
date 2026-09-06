@@ -41,10 +41,7 @@ export function isPeerOnline(input: {
 }): boolean {
   const capturedSec = Math.floor(input.capturedAt.getTime() / 1000);
   const handshakeUnix = input.handshakeUnix ?? 0n;
-  const sessionAlive =
-    handshakeUnix > 0n && capturedSec - Number(handshakeUnix) <= ONLINE_THRESHOLD_SEC;
-  const hasTraffic = (input.rxDelta ?? 0n) + (input.txDelta ?? 0n) > 0n;
-  return sessionAlive || hasTraffic;
+  return handshakeUnix > 0n && capturedSec - Number(handshakeUnix) <= ONLINE_THRESHOLD_SEC;
 }
 
 function pollBytesOf(input: { rxDelta?: bigint | null; txDelta?: bigint | null }): bigint {

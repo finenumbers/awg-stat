@@ -118,16 +118,7 @@ export default async function PeerPage({
         protocolScale="poll"
       />
 
-      <PresenceEventsCard
-        items={presenceEvents.items}
-        total={presenceEvents.total}
-        currentEndpoint={peer.endpoint}
-        currentGeo={{
-          countryName: peer.endpointCountryName,
-          cityName: peer.endpointCityName,
-          organization: peer.endpointOrganization,
-        }}
-      />
+      <PresenceEventsCard items={presenceEvents.items} total={presenceEvents.total} />
     </main>
   );
 }

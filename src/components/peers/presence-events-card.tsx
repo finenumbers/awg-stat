@@ -41,33 +41,12 @@ function EndpointLabel({ endpoint, geo }: { endpoint: string | null; geo?: Endpo
   return <EndpointParts endpoint={endpoint} geo={geo} />;
 }
 
-function CurrentEndpoint({
-  endpoint,
-  geo,
-}: {
-  endpoint: string | null | undefined;
-  geo?: EndpointGeoLabel | null;
-}) {
-  if (!displayPeerEndpoint(endpoint)) {
-    return null;
-  }
-  return (
-    <p className="text-sm">
-      Сейчас <EndpointParts endpoint={endpoint} geo={geo} />
-    </p>
-  );
-}
-
 export function PresenceEventsCard({
   items,
   total,
-  currentEndpoint,
-  currentGeo,
 }: {
   items: PeerPresenceEvent[];
   total: number;
-  currentEndpoint?: string | null;
-  currentGeo?: EndpointGeoLabel | null;
 }) {
   return (
     <Card>
@@ -78,7 +57,6 @@ export function PresenceEventsCard({
             Показаны {items.length} из {total} за 30 дней.
           </CardDescription>
         ) : null}
-        <CurrentEndpoint endpoint={currentEndpoint} geo={currentGeo} />
       </CardHeader>
       <CardContent>
         {items.length === 0 ? (

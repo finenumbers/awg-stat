@@ -63,7 +63,7 @@ test("peerPresence: user-scale traffic is active online", () => {
   assert.equal(presence.pollBytes, 50_000n);
 });
 
-test("peerPresence: handshake 200s old with keepalive bytes is still session", () => {
+test("peerPresence: handshake 200s old with keepalive bytes is offline", () => {
   const capturedAt = new Date(NOW - 15_000);
   const presence = peerPresence({
     status: "ACTIVE",
@@ -73,10 +73,23 @@ test("peerPresence: handshake 200s old with keepalive bytes is still session", (
     txDelta: 0n,
     nowMs: NOW,
   });
-  assert.equal(presence.kind, "online");
-  assert.equal(presence.activity, "session");
-  assert.equal(presence.label, "онлайн · сессия");
+  assert.equal(presence.kind, "offline");
+  assert.equal(presence.activity, null);
   assert.equal(presence.sessionLeftSec, null);
+});
+
+test("peerPresence: stale handshake plus 2.57 KB tx is offline", () => {
+  const capturedAt = new Date(NOW - 15_000);
+  const presence = peerPresence({
+    status: "ACTIVE",
+    capturedAt,
+    handshakeUnix: BigInt(Math.floor(capturedAt.getTime() / 1000) - 540),
+    rxDelta: 0n,
+    txDelta: 2632n,
+    nowMs: NOW,
+  });
+  assert.equal(presence.kind, "offline");
+  assert.equal(presence.pollBytes, 2632n);
 });
 
 test("peerPresence: sessionLeftSec is taken from the poll snapshot, not nowMs", () => {
@@ -159,6 +172,28 @@ test("isPeerOnline: future handshake counts as a live session", () => {
     isPeerOnline({
       capturedAt: new Date(NOW),
       handshakeUnix: BigInt(NOW_SEC + 30),
+    }),
+    true,
+  );
+});
+
+test("isPeerOnline: stale handshake stays offline even with traffic", () => {
+  const capturedAt = new Date(NOW);
+  assert.equal(
+    isPeerOnline({
+      capturedAt,
+      handshakeUnix: BigInt(NOW_SEC - 200),
+      rxDelta: 128n,
+      txDelta: 2632n,
+    }),
+    false,
+  );
+  assert.equal(
+    isPeerOnline({
+      capturedAt,
+      handshakeUnix: BigInt(NOW_SEC - 20),
+      rxDelta: 0n,
+      txDelta: 0n,
     }),
     true,
   );
