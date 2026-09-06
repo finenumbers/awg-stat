@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import { TrafficWindows } from "@/components/charts/traffic-windows";
 import { PresenceEventsCard } from "@/components/peers/presence-events-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { peerPresence, sessionLeftHint, type PeerPresenceView } from "@/lib/presence";
-import { cn, displayPeerInternalIp, displayPeerName, formatBytes, formatDateTime, formatRelativeHandshake } from "@/lib/utils";
+import { peerPresence, type PeerPresenceView } from "@/lib/presence";
+import { cn, displayPeerInternalIp, displayPeerName, formatDateTime, formatRelativeHandshake } from "@/lib/utils";
 import { getPeerDetail, listPeerPresenceEvents, peerTrafficWindows } from "@/server/services/server.service";
 
 export const dynamic = "force-dynamic";
@@ -53,8 +53,6 @@ export default async function PeerPage({
     : server.lastPollAt
       ? formatDateTime(server.lastPollAt)
       : null;
-  const sessionHint =
-    presence.activity === "session" ? sessionLeftHint(presence.sessionLeftSec) : null;
 
   return (
     <main className="w-full space-y-6 p-8">
@@ -88,22 +86,17 @@ export default async function PeerPage({
               >
                 Статус
               </CardDescription>
-              <CardTitle className="text-lg">{presence.label}</CardTitle>
+              <CardTitle className="text-2xl">{presence.label}</CardTitle>
             </CardHeader>
             <CardContent
               className={cn(
-                "space-y-1 text-sm",
+                "text-xs",
                 presence.kind === "online" || presence.kind === "offline"
                   ? "text-current/70"
                   : "text-muted-foreground",
               )}
             >
-              <p>
-                Handshake: {latest ? formatRelativeHandshake(latest.handshakeUnix) : "—"}
-                {latest ? ` · за опрос ${formatBytes(presence.pollBytes)}` : ""}
-              </p>
-              {sessionHint ? <p>{sessionHint}</p> : null}
-              {lastPollLabel ? <p>опрос {lastPollLabel}</p> : null}
+              Handshake: {latest ? formatRelativeHandshake(latest.handshakeUnix) : "—"}
             </CardContent>
           </Card>
         }

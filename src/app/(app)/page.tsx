@@ -13,6 +13,21 @@ import { listServers, serversTraffic24h } from "@/server/services/server.service
 
 export const dynamic = "force-dynamic";
 
+function sessionWord(count: number): string {
+  const n = Math.abs(count) % 100;
+  const last = n % 10;
+  if (n > 10 && n < 20) {
+    return "сессий";
+  }
+  if (last === 1) {
+    return "сессия";
+  }
+  if (last > 1 && last < 5) {
+    return "сессии";
+  }
+  return "сессий";
+}
+
 function sumSampleDeltas(samples: { rxDelta: bigint; txDelta: bigint }[]) {
   let rx = 0n;
   let tx = 0n;
@@ -98,11 +113,11 @@ export default async function OverviewPage() {
                             <span
                               className={
                                 online > 0 && pollBadge.kind !== "stale" && pollBadge.kind !== "offline"
-                                  ? "font-bold text-emerald-600"
+                                  ? "font-bold text-emerald-600 underline"
                                   : undefined
                               }
                             >
-                              {online} сессий
+                              {online} {sessionWord(online)}
                             </span>
                             {` / ${latest.peerCount} по последнему опросу`}
                           </>
