@@ -5,15 +5,26 @@ import { Sparkline } from "@/components/charts/traffic-chart";
 import { DeletionNotice } from "@/components/servers/deletion-notice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { serverPollBadge } from "@/lib/presence";
-import { activeAwgVersionLabel, formatBytes, formatDateTime, formatDbSizeGb } from "@/lib/utils";
+import { activeAwgVersionLabel, formatDbSizeGb, formatWindowTraffic } from "@/lib/utils";
 import { ONLINE_THRESHOLD_SEC, POLL_INTERVAL_SEC } from "@/server/poll-defaults";
 import { getDatabaseSizeBytes } from "@/server/services/database.service";
-import { listServers } from "@/server/services/server.service";
+import { listServers, serversTraffic24h } from "@/server/services/server.service";
 
 export const dynamic = "force-dynamic";
 
+function sumSampleDeltas(samples: { rxDelta: bigint; txDelta: bigint }[]) {
+  let rx = 0n;
+  let tx = 0n;
+  for (const sample of samples) {
+    rx += sample.rxDelta;
+    tx += sample.txDelta;
+  }
+  return { rx, tx };
+}
+
 export default async function OverviewPage() {
   const [servers, databaseSizeBytes] = await Promise.all([listServers(), getDatabaseSizeBytes()]);
+  const traffic24h = await serversTraffic24h(servers.map((server) => server.id));
   return (
     <main className="w-full space-y-8 p-8">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
@@ -54,11 +65,8 @@ export default async function OverviewPage() {
               running: Boolean(server.vpnInstance?.running),
               versionLabel: version,
             });
-            const lastPollLabel = latest
-              ? formatDateTime(latest.capturedAt)
-              : server.lastPollAt
-                ? formatDateTime(server.lastPollAt)
-                : null;
+            const window30m = sumSampleDeltas(server.serverSamples);
+            const window24h = traffic24h.get(server.id) ?? { rx: 0n, tx: 0n };
 
             return (
               <Link key={server.id} href={`/servers/${server.id}`}>
@@ -81,7 +89,7 @@ export default async function OverviewPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="flex items-end justify-between gap-4">
-                    <div className="space-y-1 text-sm">
+                    <div className="min-w-0 space-y-1 text-sm">
                       <p>
                         Пиры:{" "}
                         {latest ? (
@@ -102,18 +110,18 @@ export default async function OverviewPage() {
                         )}
                       </p>
                       <p className="text-muted-foreground">
-                        {latest
-                          ? `за последний опрос ${formatBytes(latest.rxDelta + latest.txDelta)}`
-                          : "график появится после первого опроса"}
+                        За 30 минут: {formatWindowTraffic(window30m.rx, window30m.tx)}
                       </p>
-                      {lastPollLabel ? (
-                        <p className="text-muted-foreground">опрос {lastPollLabel}</p>
-                      ) : null}
+                      <p className="text-muted-foreground">
+                        За 24 часа: {formatWindowTraffic(window24h.rx, window24h.tx)}
+                      </p>
                       {server.lastPollError && (
                         <p className="text-destructive">{server.lastPollError}</p>
                       )}
                     </div>
-                    <Sparkline values={spark} />
+                    <div className="shrink-0">
+                      <Sparkline values={spark} />
+                    </div>
                   </CardContent>
                 </Card>
               </Link>

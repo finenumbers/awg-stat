@@ -11,6 +11,7 @@ import {
   formatPeerEndpointLine,
   formatDbSizeGb,
   formatUptime,
+  formatWindowTraffic,
 } from "./utils";
 
 test("activeAwgVersionLabel returns only real protocol generations", () => {
@@ -63,6 +64,14 @@ test("formatUptime uses coarse Russian units", () => {
   assert.equal(formatUptime(new Date("2026-09-06T11:59:40.000Z"), now), "20 с");
   assert.equal(formatUptime(new Date("2026-09-06T10:00:00.000Z"), now), "2 ч");
   assert.equal(formatUptime(new Date("2026-09-04T10:00:00.000Z"), now), "2 дн 2 ч");
+});
+
+test("formatWindowTraffic labels rx as outgoing and tx as incoming", () => {
+  assert.equal(formatWindowTraffic(0, 0), "исходящий: 0 B, входящий: 0 B");
+  assert.equal(
+    formatWindowTraffic(Math.round(7.47 * 1024 ** 2), Math.round(16.1 * 1024 ** 2)),
+    "исходящий: 7.47 MB, входящий: 16.1 MB",
+  );
 });
 
 test("formatDbSizeGb always uses two decimals, a comma, and Gb", () => {

@@ -10,13 +10,13 @@ import { peerPresence, serverPollBadge } from "@/lib/presence";
 import {
   activeAwgVersionLabel,
   displayPeerName,
-  formatBytes,
   formatPeerEndpointLine,
   formatDateTime,
   formatRelativeHandshake,
   formatUptime,
+  formatWindowTraffic,
 } from "@/lib/utils";
-import { getServerDetail, peersTraffic24h, serverTrafficWindows } from "@/server/services/server.service";
+import { getServerDetail, peersTrafficTotals, serverTrafficWindows } from "@/server/services/server.service";
 
 export const dynamic = "force-dynamic";
 
@@ -39,10 +39,10 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
 
   const peers = server.vpnInstance?.peers ?? [];
   const [byPeer, windows] = await Promise.all([
-    peersTraffic24h(peers.map((peer) => peer.id)),
+    peersTrafficTotals(peers.map((peer) => peer.id)),
     serverTrafficWindows(server.id),
   ]);
-  const traffic24h = [...byPeer.values()];
+  const traffic24h = [...byPeer.values()].map((item) => item["24h"]);
   const latest = server.serverSamples[0];
   const version = activeAwgVersionLabel(server.vpnInstance?.awgVersion);
   const pollBadge = serverPollBadge({
@@ -136,10 +136,12 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
           ) : (
             <ul className="divide-y">
               {peers.map((peer) => {
-                const day = byPeer.get(peer.id);
+                const peerTraffic = byPeer.get(peer.id);
+                const window30m = peerTraffic?.["30m"] ?? { rx: 0n, tx: 0n };
+                const window24h = peerTraffic?.["24h"] ?? { rx: 0n, tx: 0n };
                 const sample = peer.samples[0];
                 const spark = [...peer.samples].reverse().map((item) => Number(item.rxDelta + item.txDelta));
-                const dayTotal = day ? Number(day.rx + day.tx) : 0;
+                const dayTotal = Number(window24h.rx + window24h.tx);
                 const status = peerPresence({
                   status: peer.status,
                   capturedAt: sample?.capturedAt,
@@ -171,13 +173,13 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
                             <p className="text-[11px] text-muted-foreground">{peer.publicKey}</p>
                           )}
                         </div>
-                        <div className="flex items-center gap-4 sm:min-w-[280px] sm:justify-end">
-                          <div className="text-right text-xs">
+                        <div className="flex shrink-0 items-center gap-4 sm:min-w-[360px] sm:justify-end">
+                          <div className="min-w-0 text-right text-xs">
                             <p className="tabular-nums">
-                              24ч {day ? formatBytes(day.rx + day.tx) : "—"}
+                              За 30 минут: {formatWindowTraffic(window30m.rx, window30m.tx)}
                             </p>
                             <p className="text-muted-foreground tabular-nums">
-                              от {day ? formatBytes(day.rx) : "—"} · к {day ? formatBytes(day.tx) : "—"}
+                              За 24 часа: {formatWindowTraffic(window24h.rx, window24h.tx)}
                             </p>
                             <div className="mt-1 h-1.5 w-36 overflow-hidden rounded-full bg-muted">
                               <div

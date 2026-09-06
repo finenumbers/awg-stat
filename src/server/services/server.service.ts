@@ -284,30 +284,93 @@ export async function deleteServer(id: string, userId: string): Promise<{ name: 
   return { name: snapshot.name };
 }
 
-export async function peerTraffic24h(peerId: string) {
-  const byPeer = await peersTraffic24h([peerId]);
-  return byPeer.get(peerId) ?? { rx: 0n, tx: 0n };
+export type TrafficDirectionTotals = { rx: bigint; tx: bigint };
+
+export type PeerTrafficTotals = {
+  "30m": TrafficDirectionTotals;
+  "24h": TrafficDirectionTotals;
+};
+
+function emptyDirectionTotals(): TrafficDirectionTotals {
+  return { rx: 0n, tx: 0n };
 }
 
-export async function peersTraffic24h(peerIds: string[]) {
-  const totals = new Map<string, { rx: bigint; tx: bigint }>();
+export async function serversTraffic24h(serverIds: string[]) {
+  const totals = new Map<string, TrafficDirectionTotals>();
+  for (const serverId of serverIds) {
+    totals.set(serverId, emptyDirectionTotals());
+  }
+  if (serverIds.length === 0) {
+    return totals;
+  }
+  const rows = await db.serverSample.groupBy({
+    by: ["serverId"],
+    where: { serverId: { in: serverIds }, capturedAt: { gte: new Date(Date.now() - MS_24H) } },
+    _sum: { rxDelta: true, txDelta: true },
+  });
+  for (const row of rows) {
+    totals.set(row.serverId, {
+      rx: row._sum.rxDelta ?? 0n,
+      tx: row._sum.txDelta ?? 0n,
+    });
+  }
+  return totals;
+}
+
+export async function peersTrafficTotals(peerIds: string[]) {
+  const now = Date.now();
+  const totals = new Map<string, PeerTrafficTotals>();
   for (const peerId of peerIds) {
-    totals.set(peerId, { rx: 0n, tx: 0n });
+    totals.set(peerId, { "30m": emptyDirectionTotals(), "24h": emptyDirectionTotals() });
   }
   if (peerIds.length === 0) {
     return totals;
   }
-  const since = new Date(Date.now() - MS_24H);
-  const rows = await db.peerSample.groupBy({
-    by: ["peerId"],
-    where: { peerId: { in: peerIds }, capturedAt: { gte: since } },
-    _sum: { rxDelta: true, txDelta: true },
-  });
-  for (const row of rows) {
-    totals.set(row.peerId, {
-      rx: row._sum.rxDelta ?? 0n,
-      tx: row._sum.txDelta ?? 0n,
-    });
+
+  const [rows30m, rows24h] = await Promise.all([
+    db.peerSample.groupBy({
+      by: ["peerId"],
+      where: { peerId: { in: peerIds }, capturedAt: { gte: new Date(now - MS_30M) } },
+      _sum: { rxDelta: true, txDelta: true },
+    }),
+    db.peerSample.groupBy({
+      by: ["peerId"],
+      where: { peerId: { in: peerIds }, capturedAt: { gte: new Date(now - MS_24H) } },
+      _sum: { rxDelta: true, txDelta: true },
+    }),
+  ]);
+
+  for (const row of rows30m) {
+    const current = totals.get(row.peerId);
+    if (current) {
+      current["30m"] = {
+        rx: row._sum.rxDelta ?? 0n,
+        tx: row._sum.txDelta ?? 0n,
+      };
+    }
+  }
+  for (const row of rows24h) {
+    const current = totals.get(row.peerId);
+    if (current) {
+      current["24h"] = {
+        rx: row._sum.rxDelta ?? 0n,
+        tx: row._sum.txDelta ?? 0n,
+      };
+    }
+  }
+  return totals;
+}
+
+export async function peerTraffic24h(peerId: string) {
+  const byPeer = await peersTraffic24h([peerId]);
+  return byPeer.get(peerId) ?? emptyDirectionTotals();
+}
+
+export async function peersTraffic24h(peerIds: string[]) {
+  const byPeer = await peersTrafficTotals(peerIds);
+  const totals = new Map<string, TrafficDirectionTotals>();
+  for (const [peerId, windows] of byPeer) {
+    totals.set(peerId, windows["24h"]);
   }
   return totals;
 }
