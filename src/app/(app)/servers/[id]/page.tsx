@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 
 import { Sparkline } from "@/components/charts/traffic-chart";
 import { TrafficWindows } from "@/components/charts/traffic-windows";
+import { DeleteServerDialog } from "@/components/servers/delete-server-dialog";
 import { ServerSettingsDialog } from "@/components/servers/server-settings-dialog";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { peerPresence, serverPollBadge } from "@/lib/presence";
 import {
@@ -15,7 +15,6 @@ import {
   formatRelativeHandshake,
   formatUptime,
 } from "@/lib/utils";
-import { deleteServerAction } from "@/server/actions/servers";
 import { getServerDetail, peerTraffic24h, serverTrafficWindows } from "@/server/services/server.service";
 
 export const dynamic = "force-dynamic";
@@ -96,16 +95,7 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
             username={server.sshUsername}
             authMethod={server.sshAuthMethod}
           />
-          <form
-            action={async () => {
-              "use server";
-              await deleteServerAction(id);
-            }}
-          >
-            <Button variant="outline" type="submit">
-              Удалить
-            </Button>
-          </form>
+          <DeleteServerDialog serverId={server.id} serverName={server.name} />
         </div>
       </div>
 

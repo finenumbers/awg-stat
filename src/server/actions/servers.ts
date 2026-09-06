@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 
 import { requireSession } from "@/lib/session";
 import { parseSshAuthFromFormData } from "@/lib/validations/identity";
@@ -50,16 +49,14 @@ export async function updateServerSshAction(id: string, formData: FormData): Pro
   }
 }
 
-export async function deleteServerAction(id: string): Promise<ActionResult> {
+export async function deleteServerAction(id: string): Promise<ActionResult<{ name: string }>> {
   const session = await requireSession();
   try {
-    await deleteServer(id, session.user.id);
+    const result = await deleteServer(id, session.user.id);
     revalidatePath("/");
-    redirect("/");
+    revalidatePath(`/servers/${id}`);
+    return { ok: true, data: { name: result.name } };
   } catch (error) {
-    if (error && typeof error === "object" && "digest" in error) {
-      throw error;
-    }
     return { ok: false, error: error instanceof Error ? error.message : "Не удалось удалить" };
   }
 }

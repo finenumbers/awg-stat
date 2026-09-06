@@ -1,6 +1,6 @@
 {
   "name": "gate",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Read-only monitoring and traffic statistics for existing AmneziaVPN / AmneziaWG 3.1 servers",
   "scripts": {

@@ -1,33 +1,13 @@
-import PQueue from "p-queue";
-
 import { db } from "@/lib/db";
 import { getSshSessionRegistry } from "@/lib/ssh/session-registry";
 import { POLL_DEADLINE_MS, POLL_INTERVAL_SEC, POLLER_LEASE_TTL_SEC } from "@/server/poll-defaults";
+import { clearAllQueues, pruneQueues, queueFor } from "@/server/poller-queues";
 import { getPollerEpoch, getPollerState, isPollerStopping, pollerRuntime } from "@/server/poller-runtime";
 import { pollServer, pruneOldSamples } from "@/server/services/collector.service";
 import { ensureAppSettings } from "@/server/services/setup.service";
 
 export { getPollerEpoch, getPollerState, isPollerStopping };
-
-const queues = new Map<string, PQueue>();
-
-function queueFor(serverId: string): PQueue {
-  const existing = queues.get(serverId);
-  if (existing) return existing;
-  const queue = new PQueue({ concurrency: 1 });
-  queues.set(serverId, queue);
-  return queue;
-}
-
-function pruneQueues(keepIds: Iterable<string>): void {
-  const keep = new Set(keepIds);
-  for (const serverId of [...queues.keys()]) {
-    if (!keep.has(serverId)) {
-      queues.get(serverId)?.clear();
-      queues.delete(serverId);
-    }
-  }
-}
+export { releaseServerRuntime } from "@/server/poller-queues";
 
 async function ensureLeaseRow(): Promise<void> {
   await db.pollerLease.upsert({
@@ -153,10 +133,7 @@ export async function stopPoller() {
     pollerRuntime.timer = null;
   }
   getSshSessionRegistry().closeAll();
-  for (const queue of queues.values()) {
-    queue.clear();
-  }
-  queues.clear();
+  clearAllQueues();
   pollerRuntime.started = false;
   pollerRuntime.ownsLock = false;
   pollerRuntime.epoch = null;

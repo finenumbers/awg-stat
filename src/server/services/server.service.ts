@@ -5,6 +5,7 @@ import type { SshAuthInput } from "@/lib/validations/identity";
 import type { ServerInput } from "@/lib/validations/server";
 import { filterPointsSince } from "@/lib/traffic-points";
 import { RAW_RETENTION_DAYS, SPARKLINE_SAMPLES } from "@/server/poll-defaults";
+import { releaseServerRuntime } from "@/server/poller-queues";
 import { createAuditEvent } from "@/server/services/audit.service";
 import { CollectorError, onboardExistingServer } from "@/server/services/collector.service";
 import { writeServerCredential } from "@/server/services/identity.service";
@@ -180,23 +181,89 @@ function isPrismaNotFound(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025";
 }
 
-export async function deleteServer(id: string, userId: string) {
-  try {
-    await db.server.delete({ where: { id } });
-  } catch (error) {
-    if (!isPrismaNotFound(error)) {
-      throw error;
-    }
+const LEFTOVER_ERROR = "Не удалось полностью удалить данные сервера";
+
+async function assertServerDataGone(
+  tx: Prisma.TransactionClient,
+  serverId: string,
+  vpnInstanceId: string | null,
+  peerIds: string[],
+) {
+  const peerWhere = peerIds.length > 0 ? { peerId: { in: peerIds } } : null;
+  const [servers, credentials, instances, serverSamples, peers, peerSamples, hourly, presence] = await Promise.all([
+    tx.server.count({ where: { id: serverId } }),
+    tx.serverCredential.count({ where: { serverId } }),
+    tx.vpnInstance.count({
+      where: vpnInstanceId ? { OR: [{ serverId }, { id: vpnInstanceId }] } : { serverId },
+    }),
+    tx.serverSample.count({ where: { serverId } }),
+    peerIds.length ? tx.peer.count({ where: { id: { in: peerIds } } }) : 0,
+    peerWhere ? tx.peerSample.count({ where: peerWhere }) : 0,
+    peerWhere ? tx.peerHourlySample.count({ where: peerWhere }) : 0,
+    peerWhere ? tx.peerPresenceEvent.count({ where: peerWhere }) : 0,
+  ]);
+  const leftover = servers + credentials + instances + serverSamples + peers + peerSamples + hourly + presence;
+  if (leftover > 0) {
+    console.error("[deleteServer] leftover rows", {
+      serverId,
+      servers,
+      credentials,
+      instances,
+      serverSamples,
+      peers,
+      peerSamples,
+      hourly,
+      presence,
+    });
+    throw new Error(LEFTOVER_ERROR);
   }
-  await db.auditEvent.deleteMany({
-    where: { entityType: "server", entityId: id },
+}
+
+export async function deleteServer(id: string, userId: string): Promise<{ name: string }> {
+  releaseServerRuntime(id);
+
+  const snapshot = await db.server.findUnique({
+    where: { id },
+    select: {
+      name: true,
+      vpnInstance: { select: { id: true, peers: { select: { id: true } } } },
+    },
   });
-  await createAuditEvent({
-    userId,
-    action: "SERVER_DELETED",
-    entityType: "server",
-    entityId: id,
+  if (!snapshot) {
+    return { name: "сервер" };
+  }
+
+  const vpnInstanceId = snapshot.vpnInstance?.id ?? null;
+  const peerIds = snapshot.vpnInstance?.peers.map((peer) => peer.id) ?? [];
+
+  await db.$transaction(async (tx) => {
+    let removed = true;
+    try {
+      await tx.server.delete({ where: { id } });
+    } catch (error) {
+      if (!isPrismaNotFound(error)) {
+        throw error;
+      }
+      removed = false;
+    }
+    await assertServerDataGone(tx, id, vpnInstanceId, peerIds);
+    if (!removed) {
+      return;
+    }
+    await tx.auditEvent.deleteMany({
+      where: { entityType: "server", entityId: id },
+    });
+    await tx.auditEvent.create({
+      data: {
+        userId,
+        action: "SERVER_DELETED",
+        entityType: "server",
+        entityId: id,
+      },
+    });
   });
+
+  return { name: snapshot.name };
 }
 
 export async function peerTraffic24h(peerId: string) {

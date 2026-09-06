@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { Sparkline } from "@/components/charts/traffic-chart";
+import { DeletionNotice } from "@/components/servers/deletion-notice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { serverPollBadge } from "@/lib/presence";
@@ -25,6 +27,10 @@ export default async function OverviewPage() {
           <Link href="/servers/new">Добавить сервер</Link>
         </Button>
       </div>
+
+      <Suspense fallback={null}>
+        <DeletionNotice />
+      </Suspense>
 
       {servers.length === 0 ? (
         <Card>

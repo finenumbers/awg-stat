@@ -12,6 +12,7 @@ export function Dialog({
   description,
   children,
   className,
+  closeDisabled = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -19,6 +20,7 @@ export function Dialog({
   description?: string;
   children: ReactNode;
   className?: string;
+  closeDisabled?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
 
@@ -49,7 +51,7 @@ export function Dialog({
           <h2 className="text-base font-semibold">{title}</h2>
           {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
         </div>
-        <Button type="button" variant="ghost" size="sm" onClick={onClose} aria-label="Закрыть">
+        <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={closeDisabled} aria-label="Закрыть">
           Закрыть
         </Button>
       </div>
