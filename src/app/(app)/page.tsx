@@ -9,7 +9,7 @@ import { serverPollBadge } from "@/lib/presence";
 import { activeAwgVersionLabel, formatDbSizeGb } from "@/lib/utils";
 import { ONLINE_THRESHOLD_SEC, POLL_INTERVAL_SEC } from "@/server/poll-defaults";
 import { getDatabaseSizeBytes } from "@/server/services/database.service";
-import { listServers, serversTraffic24h } from "@/server/services/server.service";
+import { listServers, serversTraffic24h, serversTraffic30d } from "@/server/services/server.service";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,11 @@ function sumSampleDeltas(samples: { rxDelta: bigint; txDelta: bigint }[]) {
 
 export default async function OverviewPage() {
   const [servers, databaseSizeBytes] = await Promise.all([listServers(), getDatabaseSizeBytes()]);
-  const traffic24h = await serversTraffic24h(servers.map((server) => server.id));
+  const serverIds = servers.map((server) => server.id);
+  const [traffic24h, traffic30d] = await Promise.all([
+    serversTraffic24h(serverIds),
+    serversTraffic30d(serverIds),
+  ]);
   return (
     <main className="w-full space-y-8 p-8">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
@@ -83,6 +87,7 @@ export default async function OverviewPage() {
             });
             const window30m = sumSampleDeltas(server.serverSamples);
             const window24h = traffic24h.get(server.id) ?? { rx: 0n, tx: 0n };
+            const window30d = traffic30d.get(server.id) ?? { rx: 0n, tx: 0n };
 
             return (
               <Link key={server.id} href={`/servers/${server.id}`}>
@@ -140,6 +145,15 @@ export default async function OverviewPage() {
                           <WindowTrafficValues
                             rx={window24h.rx}
                             tx={window24h.tx}
+                            rxLabel="исходящий:"
+                            txLabel="входящий:"
+                          />
+                        </p>
+                        <p>
+                          За 30 дней:{" "}
+                          <WindowTrafficValues
+                            rx={window30d.rx}
+                            tx={window30d.tx}
                             rxLabel="исходящий:"
                             txLabel="входящий:"
                           />

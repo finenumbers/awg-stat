@@ -317,6 +317,43 @@ export async function serversTraffic24h(serverIds: string[]) {
   return totals;
 }
 
+function peerHourlySince(now: number) {
+  return new Date(now - MS_30D);
+}
+
+export async function serversTraffic30d(serverIds: string[], now = Date.now()) {
+  const totals = new Map<string, TrafficDirectionTotals>();
+  for (const serverId of serverIds) {
+    totals.set(serverId, emptyDirectionTotals());
+  }
+  if (serverIds.length === 0) {
+    return totals;
+  }
+
+  const since30 = peerHourlySince(now);
+  const rows = await Promise.all(
+    serverIds.map(async (serverId) => {
+      const hourlyTotals = await db.peerHourlySample.aggregate({
+        where: {
+          hourStart: { gte: since30 },
+          peer: { vpnInstance: { serverId } },
+        },
+        _sum: { rxDelta: true, txDelta: true },
+      });
+      return {
+        serverId,
+        rx: hourlyTotals._sum.rxDelta ?? 0n,
+        tx: hourlyTotals._sum.txDelta ?? 0n,
+      };
+    }),
+  );
+
+  for (const row of rows) {
+    totals.set(row.serverId, { rx: row.rx, tx: row.tx });
+  }
+  return totals;
+}
+
 export async function peersTrafficTotals(peerIds: string[]) {
   const now = Date.now();
   const totals = new Map<string, PeerTrafficTotals>();
@@ -423,9 +460,9 @@ export async function serverTrafficWindows(serverId: string): Promise<TrafficWin
   const now = Date.now();
   const since30m = now - MS_30M;
   const since24 = new Date(now - MS_24H);
-  const since30 = new Date(now - MS_30D);
+  const since30 = peerHourlySince(now);
 
-  const [raw24, hourly, hourlyTotals] = await Promise.all([
+  const [raw24, hourly, totals30dByServer] = await Promise.all([
     db.serverSample.findMany({
       where: { serverId, capturedAt: { gte: since24 } },
       orderBy: { capturedAt: "asc" },
@@ -440,13 +477,7 @@ export async function serverTrafficWindows(serverId: string): Promise<TrafficWin
       _sum: { rxDelta: true, txDelta: true },
       orderBy: { hourStart: "asc" },
     }),
-    db.peerHourlySample.aggregate({
-      where: {
-        hourStart: { gte: since30 },
-        peer: { vpnInstance: { serverId } },
-      },
-      _sum: { rxDelta: true, txDelta: true },
-    }),
+    serversTraffic30d([serverId], now),
   ]);
 
   const points24raw = raw24.map((sample) => toPoint(sample.capturedAt, sample.rxDelta, sample.txDelta));
@@ -456,14 +487,15 @@ export async function serverTrafficWindows(serverId: string): Promise<TrafficWin
     rx: Number(row._sum.rxDelta ?? 0n),
     tx: Number(row._sum.txDelta ?? 0n),
   }));
+  const hourlyTotals = totals30dByServer.get(serverId) ?? emptyDirectionTotals();
 
   return {
     "30m": { totals: sumPoints(points30m), points: points30m },
     "24h": { totals: sumPoints(points24raw), points: bucketMinutes(points24raw, now - MS_24H, now) },
     "30d": {
       totals: {
-        rx: Number(hourlyTotals._sum.rxDelta ?? 0n),
-        tx: Number(hourlyTotals._sum.txDelta ?? 0n),
+        rx: Number(hourlyTotals.rx),
+        tx: Number(hourlyTotals.tx),
       },
       points: fillHours(hourlyPoints, now - MS_30D, now),
     },
