@@ -5,21 +5,26 @@ import { InfoblockBody, INFOBLOCK_CHROME } from "@/components/charts/infoblock";
 import { Sparkline } from "@/components/charts/traffic-chart";
 import { TrafficWindows } from "@/components/charts/traffic-windows";
 import { WindowTrafficValues } from "@/components/charts/window-traffic";
+import { ActivePeersToggle } from "@/components/servers/active-peers-toggle";
 import { DeleteServerDialog } from "@/components/servers/delete-server-dialog";
 import { ServerSettingsDialog } from "@/components/servers/server-settings-dialog";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { peerPresence, serverPollBadge } from "@/lib/presence";
 import {
   activeAwgVersionLabel,
+  displayPeerEndpoint,
   displayPeerName,
-  formatPeerEndpointLine,
   formatDateTime,
+  formatEndpointGeo,
   formatRelativeHandshake,
   formatUptime,
 } from "@/lib/utils";
 import { getServerDetail, peersTrafficTotals, serverTrafficWindows } from "@/server/services/server.service";
 
 export const dynamic = "force-dynamic";
+
+const TRAFFIC_RX_LABEL = "исходящий:";
+const TRAFFIC_TX_LABEL = "входящий:";
 
 function statusTone(kind: "ok" | "warn" | "off") {
   if (kind === "ok") {
@@ -31,16 +36,56 @@ function statusTone(kind: "ok" | "warn" | "off") {
   return "bg-zinc-100 text-zinc-700";
 }
 
-export default async function ServerPage({ params }: { params: Promise<{ id: string }> }) {
+function firstSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function peerEndpointHostLine(
+  endpoint: string | null,
+  geo: {
+    countryName: string | null;
+    cityName: string | null;
+    organization: string | null;
+  },
+) {
+  const host = displayPeerEndpoint(endpoint)?.host;
+  if (!host) {
+    return null;
+  }
+  const suffix = formatEndpointGeo(geo);
+  return suffix ? `${host} (${suffix})` : host;
+}
+
+export default async function ServerPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ active?: string | string[] }>;
+}) {
   const { id } = await params;
+  const { active } = await searchParams;
+  const activeOnly = firstSearchParam(active) !== "0";
   const server = await getServerDetail(id);
   if (!server) {
     notFound();
   }
 
   const peers = server.vpnInstance?.peers ?? [];
+  const peerRows = peers.map((peer) => {
+    const sample = peer.samples[0];
+    const status = peerPresence({
+      status: peer.status,
+      capturedAt: sample?.capturedAt,
+      handshakeUnix: sample?.handshakeUnix,
+      rxDelta: sample?.rxDelta,
+      txDelta: sample?.txDelta,
+    });
+    return { peer, sample, status };
+  });
+  const visibleRows = activeOnly ? peerRows.filter((row) => row.status.kind === "online") : peerRows;
   const [byPeer, windows] = await Promise.all([
-    peersTrafficTotals(peers.map((peer) => peer.id)),
+    peersTrafficTotals(visibleRows.map((row) => row.peer.id)),
     serverTrafficWindows(server.id),
   ]);
   const latest = server.serverSamples[0];
@@ -113,27 +158,27 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
       />
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Пиры</CardTitle>
-          <CardDescription>Имя — из clientsTable на VPN. Если файла нет или он пуст, показываем начало публичного ключа.</CardDescription>
+          <ActivePeersToggle checked={activeOnly} />
         </CardHeader>
         <CardContent>
           {peers.length === 0 ? (
             <p className="text-sm text-muted-foreground">Пиры появятся после успешного опроса живого awg show.</p>
+          ) : visibleRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Нет активных пиров.</p>
           ) : (
             <ul className="divide-y">
-              {peers.map((peer) => {
+              {visibleRows.map(({ peer, sample, status }) => {
                 const peerTraffic = byPeer.get(peer.id);
                 const window30m = peerTraffic?.["30m"] ?? { rx: 0n, tx: 0n };
                 const window24h = peerTraffic?.["24h"] ?? { rx: 0n, tx: 0n };
-                const sample = peer.samples[0];
+                const window30d = peerTraffic?.["30d"] ?? { rx: 0n, tx: 0n };
                 const spark = [...peer.samples].reverse().map((item) => Number(item.rxDelta + item.txDelta));
-                const status = peerPresence({
-                  status: peer.status,
-                  capturedAt: sample?.capturedAt,
-                  handshakeUnix: sample?.handshakeUnix,
-                  rxDelta: sample?.rxDelta,
-                  txDelta: sample?.txDelta,
+                const endpointLine = peerEndpointHostLine(peer.endpoint, {
+                  countryName: peer.endpointCountryName,
+                  cityName: peer.endpointCityName,
+                  organization: peer.endpointOrganization,
                 });
                 return (
                   <li key={peer.id}>
@@ -147,25 +192,40 @@ export default async function ServerPage({ params }: { params: Promise<{ id: str
                           <p className="text-xs text-muted-foreground">
                             Handshake: {sample ? formatRelativeHandshake(sample.handshakeUnix) : "—"}
                             {peer.allowedIps ? ` · ${peer.allowedIps}` : ""}
-                            {peer.endpoint
-                              ? ` · ${formatPeerEndpointLine(peer.endpoint, {
-                                  countryName: peer.endpointCountryName,
-                                  cityName: peer.endpointCityName,
-                                  organization: peer.endpointOrganization,
-                                }) ?? peer.endpoint}`
-                              : ""}
+                            {endpointLine ? ` · ${endpointLine}` : ""}
                           </p>
                           {!peer.vpnName && (
                             <p className="text-[11px] text-muted-foreground">{peer.publicKey}</p>
                           )}
                         </div>
-                        <div className="flex shrink-0 items-center gap-4 sm:min-w-[360px] sm:justify-end">
+                        <div className="flex shrink-0 items-center gap-4 sm:min-w-[520px] sm:justify-end">
                           <div className="min-w-0 text-right text-xs">
                             <p className="tabular-nums">
-                              За 30 минут: <WindowTrafficValues rx={window30m.rx} tx={window30m.tx} />
+                              За 30 минут:{" "}
+                              <WindowTrafficValues
+                                rx={window30m.rx}
+                                tx={window30m.tx}
+                                rxLabel={TRAFFIC_RX_LABEL}
+                                txLabel={TRAFFIC_TX_LABEL}
+                              />
                             </p>
                             <p className="text-muted-foreground tabular-nums">
-                              За 24 часа: <WindowTrafficValues rx={window24h.rx} tx={window24h.tx} />
+                              За 24 часа:{" "}
+                              <WindowTrafficValues
+                                rx={window24h.rx}
+                                tx={window24h.tx}
+                                rxLabel={TRAFFIC_RX_LABEL}
+                                txLabel={TRAFFIC_TX_LABEL}
+                              />
+                            </p>
+                            <p className="text-muted-foreground tabular-nums">
+                              За 30 дней:{" "}
+                              <WindowTrafficValues
+                                rx={window30d.rx}
+                                tx={window30d.tx}
+                                rxLabel={TRAFFIC_RX_LABEL}
+                                txLabel={TRAFFIC_TX_LABEL}
+                              />
                             </p>
                           </div>
                           <Sparkline values={spark} />

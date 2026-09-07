@@ -289,6 +289,7 @@ export type TrafficDirectionTotals = { rx: bigint; tx: bigint };
 export type PeerTrafficTotals = {
   "30m": TrafficDirectionTotals;
   "24h": TrafficDirectionTotals;
+  "30d": TrafficDirectionTotals;
 };
 
 function emptyDirectionTotals(): TrafficDirectionTotals {
@@ -358,13 +359,17 @@ export async function peersTrafficTotals(peerIds: string[]) {
   const now = Date.now();
   const totals = new Map<string, PeerTrafficTotals>();
   for (const peerId of peerIds) {
-    totals.set(peerId, { "30m": emptyDirectionTotals(), "24h": emptyDirectionTotals() });
+    totals.set(peerId, {
+      "30m": emptyDirectionTotals(),
+      "24h": emptyDirectionTotals(),
+      "30d": emptyDirectionTotals(),
+    });
   }
   if (peerIds.length === 0) {
     return totals;
   }
 
-  const [rows30m, rows24h] = await Promise.all([
+  const [rows30m, rows24h, rows30d] = await Promise.all([
     db.peerSample.groupBy({
       by: ["peerId"],
       where: { peerId: { in: peerIds }, capturedAt: { gte: new Date(now - MS_30M) } },
@@ -373,6 +378,11 @@ export async function peersTrafficTotals(peerIds: string[]) {
     db.peerSample.groupBy({
       by: ["peerId"],
       where: { peerId: { in: peerIds }, capturedAt: { gte: new Date(now - MS_24H) } },
+      _sum: { rxDelta: true, txDelta: true },
+    }),
+    db.peerHourlySample.groupBy({
+      by: ["peerId"],
+      where: { peerId: { in: peerIds }, hourStart: { gte: peerHourlySince(now) } },
       _sum: { rxDelta: true, txDelta: true },
     }),
   ]);
@@ -390,6 +400,15 @@ export async function peersTrafficTotals(peerIds: string[]) {
     const current = totals.get(row.peerId);
     if (current) {
       current["24h"] = {
+        rx: row._sum.rxDelta ?? 0n,
+        tx: row._sum.txDelta ?? 0n,
+      };
+    }
+  }
+  for (const row of rows30d) {
+    const current = totals.get(row.peerId);
+    if (current) {
+      current["30d"] = {
         rx: row._sum.rxDelta ?? 0n,
         tx: row._sum.txDelta ?? 0n,
       };
