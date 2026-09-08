@@ -8,7 +8,6 @@ import {
   displayPeerEndpoint,
   displayPeerInternalIp,
   formatDateTime,
-  formatPeerEndpointLine,
   formatDbSizeGb,
   formatUptime,
 } from "./utils";
@@ -71,27 +70,6 @@ test("formatDbSizeGb always uses two decimals, a comma, and Gb", () => {
   assert.equal(formatDbSizeGb(Number.NaN), "0,00 Gb");
   assert.equal(formatDbSizeGb(1024 ** 3), "1,00 Gb");
   assert.equal(formatDbSizeGb(Math.round(0.12 * 1024 ** 3)), "0,12 Gb");
-});
-
-test("formatPeerEndpointLine joins address and non-empty geo parts", () => {
-  assert.equal(
-    formatPeerEndpointLine("90.189.221.79:60057", {
-      countryName: "Российская Федерация",
-      cityName: "Новосибирск",
-      organization: "Rostelecom",
-    }),
-    "90.189.221.79:60057 (Российская Федерация / Новосибирск / Rostelecom)",
-  );
-  assert.equal(
-    formatPeerEndpointLine("90.189.221.79:60057", {
-      countryName: "Российская Федерация",
-      cityName: null,
-      organization: "Rostelecom",
-    }),
-    "90.189.221.79:60057 (Российская Федерация / Rostelecom)",
-  );
-  assert.equal(formatPeerEndpointLine("90.189.221.79:60057", null), "90.189.221.79:60057");
-  assert.equal(formatPeerEndpointLine("(none)"), null);
 });
 
 test("formatDateTime labels the timestamp as UTC", () => {

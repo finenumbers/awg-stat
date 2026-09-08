@@ -209,31 +209,11 @@ export type EndpointGeoLabel = {
   organization?: string | null;
 };
 
-export function formatEndpointAddress(endpoint: string | null | undefined): string | null {
-  const parsed = displayPeerEndpoint(endpoint);
-  if (!parsed) {
-    return null;
-  }
-  return parsed.port ? `${parsed.host}:${parsed.port}` : parsed.host;
-}
-
 export function formatEndpointGeo(geo: EndpointGeoLabel | null | undefined): string | null {
   const parts = [geo?.countryName, geo?.cityName, geo?.organization]
     .map((part) => part?.trim())
     .filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(" / ") : null;
-}
-
-export function formatPeerEndpointLine(
-  endpoint: string | null | undefined,
-  geo?: EndpointGeoLabel | null,
-): string | null {
-  const address = formatEndpointAddress(endpoint);
-  if (!address) {
-    return null;
-  }
-  const suffix = formatEndpointGeo(geo);
-  return suffix ? `${address} (${suffix})` : address;
 }
 
 export function formatDateTime(date: Date): string {

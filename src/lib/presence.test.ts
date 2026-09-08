@@ -8,7 +8,6 @@ import {
   isPollFresh,
   isProtocolTraffic,
   peerPresence,
-  sessionLeftHint,
   presenceEventView,
   presenceTransition,
   previousPresenceOnline,
@@ -105,11 +104,6 @@ test("peerPresence: sessionLeftSec is taken from the poll snapshot, not nowMs", 
   });
   assert.equal(presence.kind, "online");
   assert.equal(presence.sessionLeftSec, 140);
-});
-
-test("sessionLeftHint stays silent without a snapshot remainder", () => {
-  assert.equal(sessionLeftHint(null), null);
-  assert.equal(sessionLeftHint(110), "сессия WG, офлайн не раньше ~110 с от этого опроса");
 });
 
 test("isProtocolTraffic stays at the documented 4 KiB ceiling", () => {

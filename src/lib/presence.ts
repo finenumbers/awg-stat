@@ -155,13 +155,6 @@ export function presenceTransition(input: {
   return input.online ? "ONLINE" : "OFFLINE";
 }
 
-export function sessionLeftHint(sessionLeftSec: number | null): string | null {
-  if (sessionLeftSec == null) {
-    return null;
-  }
-  return `сессия WG, офлайн не раньше ~${sessionLeftSec} с от этого опроса`;
-}
-
 export function presenceEventView(kind: PresenceEventKind): Presence {
   if (kind === "ONLINE") {
     return { kind: "online", label: "онлайн", tone: "ok" };

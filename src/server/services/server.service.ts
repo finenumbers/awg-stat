@@ -418,20 +418,6 @@ export async function peersTrafficTotals(peerIds: string[]) {
   return totals;
 }
 
-export async function peerTraffic24h(peerId: string) {
-  const byPeer = await peersTraffic24h([peerId]);
-  return byPeer.get(peerId) ?? emptyDirectionTotals();
-}
-
-export async function peersTraffic24h(peerIds: string[]) {
-  const byPeer = await peersTrafficTotals(peerIds);
-  const totals = new Map<string, TrafficDirectionTotals>();
-  for (const [peerId, windows] of byPeer) {
-    totals.set(peerId, windows["24h"]);
-  }
-  return totals;
-}
-
 export async function peerTrafficWindows(peerId: string): Promise<TrafficWindowsView> {
   const now = Date.now();
   const since30m = now - MS_30M;
