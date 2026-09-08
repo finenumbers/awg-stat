@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { InfoblockBody, INFOBLOCK_CHROME } from "@/components/charts/infoblock";
 import { Sparkline } from "@/components/charts/traffic-chart";
 import { WindowTrafficValues } from "@/components/charts/window-traffic";
 import { DeletionNotice } from "@/components/servers/deletion-notice";
@@ -8,11 +9,14 @@ import { ServerIcmpHint } from "@/components/servers/server-icmp-hint";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { freshIcmpLabel } from "@/lib/latency";
 import { serverPollBadge } from "@/lib/presence";
-import { activeAwgVersionLabel, formatDbSizeGb } from "@/lib/utils";
+import { activeAwgVersionLabel, formatBytes, formatDbSizeGb } from "@/lib/utils";
 import { getDatabaseSizeBytes } from "@/server/services/database.service";
 import { listServers, serversTraffic24h, serversTraffic30d } from "@/server/services/server.service";
 
 export const dynamic = "force-dynamic";
+
+type OverviewServer = Awaited<ReturnType<typeof listServers>>[number];
+type DirectionTotals = { rx: bigint; tx: bigint };
 
 function sessionWord(count: number): string {
   const n = Math.abs(count) % 100;
@@ -29,12 +33,37 @@ function sessionWord(count: number): string {
   return "сессий";
 }
 
-function sumSampleDeltas(samples: { rxDelta: bigint; txDelta: bigint }[]) {
+function overviewPollBadge(server: OverviewServer) {
+  const latest = server.serverSamples[0];
+  return serverPollBadge({
+    lastPollAt: server.lastPollAt,
+    lastSampleAt: latest?.capturedAt,
+    lastPollError: server.lastPollError,
+    running: Boolean(server.vpnInstance?.running),
+    versionLabel: activeAwgVersionLabel(server.vpnInstance?.awgVersion),
+  });
+}
+
+function sumSampleDeltas(samples: { rxDelta: bigint; txDelta: bigint }[]): DirectionTotals {
   let rx = 0n;
   let tx = 0n;
   for (const sample of samples) {
     rx += sample.rxDelta;
     tx += sample.txDelta;
+  }
+  return { rx, tx };
+}
+
+function addTotals(a: DirectionTotals, b: DirectionTotals): DirectionTotals {
+  return { rx: a.rx + b.rx, tx: a.tx + b.tx };
+}
+
+function sumTrafficMap(totals: Map<string, DirectionTotals>): DirectionTotals {
+  let rx = 0n;
+  let tx = 0n;
+  for (const value of totals.values()) {
+    rx += value.rx;
+    tx += value.tx;
   }
   return { rx, tx };
 }
@@ -46,6 +75,18 @@ export default async function OverviewPage() {
     serversTraffic24h(serverIds),
     serversTraffic30d(serverIds),
   ]);
+  const activeServers = servers.filter((server) => overviewPollBadge(server).kind === "online").length;
+  const total30m = servers.reduce<DirectionTotals>(
+    (acc, server) => addTotals(acc, sumSampleDeltas(server.serverSamples)),
+    { rx: 0n, tx: 0n },
+  );
+  const total24h = sumTrafficMap(traffic24h);
+  const total30d = sumTrafficMap(traffic30d);
+  const trafficWindows = [
+    { label: "За 30 минут", totals: total30m },
+    { label: "За 24 часа", totals: total24h },
+    { label: "За 30 дней", totals: total30d },
+  ] as const;
   return (
     <main className="w-full space-y-8 p-8">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
@@ -67,8 +108,27 @@ export default async function OverviewPage() {
           </CardHeader>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {servers.map((server) => {
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className={INFOBLOCK_CHROME}>
+              <InfoblockBody
+                label="Серверы"
+                value={`${activeServers} / ${servers.length}`}
+                caption="активные"
+              />
+            </div>
+            {trafficWindows.map(({ label, totals }) => (
+              <div key={label} className={INFOBLOCK_CHROME}>
+                <InfoblockBody
+                  label={label}
+                  value={formatBytes(totals.rx + totals.tx)}
+                  caption={<WindowTrafficValues rx={totals.rx} tx={totals.tx} />}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {servers.map((server) => {
             const latest = server.serverSamples[0];
             const spark = [...server.serverSamples]
               .reverse()
@@ -78,14 +138,7 @@ export default async function OverviewPage() {
               latest && server.vpnInstance
                 ? latest.onlineCount
                 : 0;
-            const version = activeAwgVersionLabel(server.vpnInstance?.awgVersion);
-            const pollBadge = serverPollBadge({
-              lastPollAt: server.lastPollAt,
-              lastSampleAt: latest?.capturedAt,
-              lastPollError: server.lastPollError,
-              running: Boolean(server.vpnInstance?.running),
-              versionLabel: version,
-            });
+            const pollBadge = overviewPollBadge(server);
             const icmpLabel = freshIcmpLabel(server.lastIcmpRttMs, server.lastIcmpAt);
             const window30m = sumSampleDeltas(server.serverSamples);
             const window24h = traffic24h.get(server.id) ?? { rx: 0n, tx: 0n };
@@ -172,8 +225,9 @@ export default async function OverviewPage() {
                 </Card>
               </Link>
             );
-          })}
-        </div>
+            })}
+          </div>
+        </>
       )}
     </main>
   );
