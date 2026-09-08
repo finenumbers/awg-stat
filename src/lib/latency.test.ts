@@ -9,6 +9,7 @@ test("formats RTT and treats missing as н/д", () => {
   assert.equal(formatRttMs(null), "н/д");
   assert.equal(formatRttMs(0), "<1 мс");
   assert.equal(formatRttMs(14), "14 мс");
+  assert.equal(formatRttMs(3456), "3 456 мс");
 });
 
 test("freshIcmpLabel always shows current RTT or unavailable", () => {

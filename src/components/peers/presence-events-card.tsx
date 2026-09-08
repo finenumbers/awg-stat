@@ -6,6 +6,7 @@ import {
   displayPeerEndpoint,
   formatDateTime,
   formatEndpointGeo,
+  formatInteger,
   type EndpointGeoLabel,
 } from "@/lib/utils";
 
@@ -54,7 +55,7 @@ export function PresenceEventsCard({
         <CardTitle>Подключения</CardTitle>
         {total > items.length ? (
           <CardDescription>
-            Показаны {items.length} из {total} за 30 дней.
+            Показаны {formatInteger(items.length)} из {formatInteger(total)} за 30 дней.
           </CardDescription>
         ) : null}
       </CardHeader>

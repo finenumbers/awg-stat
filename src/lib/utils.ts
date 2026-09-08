@@ -5,10 +5,24 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Regular space every three digits in the integer part. Leaves "3456.8" / "3456,8" as "3 456.8" / "3 456,8". */
+export function groupThousands(formatted: string): string {
+  return formatted.replace(/^(-?)(\d+)/, (_, sign: string, digits: string) => {
+    return `${sign}${digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
+  });
+}
+
+export function formatInteger(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "0";
+  }
+  return groupThousands(String(Math.trunc(value)));
+}
+
 export function formatDbSizeGb(value: bigint | number): string {
   const n = typeof value === "bigint" ? Number(value) : value;
   const gb = !Number.isFinite(n) || n < 0 ? 0 : n / 1024 ** 3;
-  return `${gb.toFixed(2).replace(".", ",")} Gb`;
+  return `${groupThousands(gb.toFixed(2).replace(".", ","))} Gb`;
 }
 
 export function formatBytes(value: bigint | number): string {
@@ -24,7 +38,7 @@ export function formatBytes(value: bigint | number): string {
     unit += 1;
   }
   const digits = unit === 0 ? 0 : size >= 10 ? 1 : 2;
-  return `${size.toFixed(digits)} ${units[unit]}`;
+  return `${groupThousands(size.toFixed(digits))} ${units[unit]}`;
 }
 
 export function formatRelativeHandshake(unixSec: bigint, nowSec = Math.floor(Date.now() / 1000)): string {
@@ -36,15 +50,15 @@ export function formatRelativeHandshake(unixSec: bigint, nowSec = Math.floor(Dat
     return "только что";
   }
   if (age < 60) {
-    return `${age} с назад`;
+    return `${formatInteger(age)} с назад`;
   }
   if (age < 3600) {
-    return `${Math.floor(age / 60)} мин назад`;
+    return `${formatInteger(Math.floor(age / 60))} мин назад`;
   }
   if (age < 86400) {
-    return `${Math.floor(age / 3600)} ч назад`;
+    return `${formatInteger(Math.floor(age / 3600))} ч назад`;
   }
-  return `${Math.floor(age / 86400)} дн назад`;
+  return `${formatInteger(Math.floor(age / 86400))} дн назад`;
 }
 
 export function displayPeerName(vpnName: string | null | undefined, publicKey: string): string {
@@ -158,20 +172,20 @@ export function activeAwgVersionLabel(version: AwgVersionValue): string | null {
 export function formatUptime(startedAt: Date, now = new Date()): string {
   const sec = Math.max(0, Math.floor((now.getTime() - startedAt.getTime()) / 1000));
   if (sec < 60) {
-    return `${sec} с`;
+    return `${formatInteger(sec)} с`;
   }
   const minutes = Math.floor(sec / 60);
   if (minutes < 60) {
-    return `${minutes} мин`;
+    return `${formatInteger(minutes)} мин`;
   }
   const hours = Math.floor(minutes / 60);
   const remMin = minutes % 60;
   if (hours < 24) {
-    return remMin > 0 ? `${hours} ч ${remMin} мин` : `${hours} ч`;
+    return remMin > 0 ? `${formatInteger(hours)} ч ${formatInteger(remMin)} мин` : `${formatInteger(hours)} ч`;
   }
   const days = Math.floor(hours / 24);
   const remHours = hours % 24;
-  return remHours > 0 ? `${days} дн ${remHours} ч` : `${days} дн`;
+  return remHours > 0 ? `${formatInteger(days)} дн ${formatInteger(remHours)} ч` : `${formatInteger(days)} дн`;
 }
 
 export type DisplayedEndpoint = {

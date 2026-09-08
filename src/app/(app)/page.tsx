@@ -9,7 +9,7 @@ import { ServerIcmpHint } from "@/components/servers/server-icmp-hint";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { freshIcmpLabel } from "@/lib/latency";
 import { serverPollBadge } from "@/lib/presence";
-import { activeAwgVersionLabel, formatBytes, formatDbSizeGb } from "@/lib/utils";
+import { activeAwgVersionLabel, formatBytes, formatDbSizeGb, formatInteger } from "@/lib/utils";
 import { getDatabaseSizeBytes } from "@/server/services/database.service";
 import { listServers, serversTraffic24h, serversTraffic30d } from "@/server/services/server.service";
 
@@ -113,7 +113,7 @@ export default async function OverviewPage() {
             <div className={INFOBLOCK_CHROME}>
               <InfoblockBody
                 label="Серверы"
-                value={`${activeServers} / ${servers.length}`}
+                value={`${formatInteger(activeServers)} / ${formatInteger(servers.length)}`}
                 caption="активные"
               />
             </div>
@@ -180,12 +180,12 @@ export default async function OverviewPage() {
                                   : undefined
                               }
                             >
-                              {online} {sessionWord(online)}
+                              {formatInteger(online)} {sessionWord(online)}
                             </span>
-                            {` / ${latest.peerCount} по последнему опросу`}
+                            {` / ${formatInteger(latest.peerCount)} по последнему опросу`}
                           </>
                         ) : (
-                          `${peers.length} (ещё нет сэмплов)`
+                          `${formatInteger(peers.length)} (ещё нет сэмплов)`
                         )}
                       </p>
                       <div className="text-muted-foreground">

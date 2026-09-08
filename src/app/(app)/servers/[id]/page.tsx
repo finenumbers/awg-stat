@@ -18,6 +18,7 @@ import {
   displayPeerName,
   formatDateTime,
   formatEndpointGeo,
+  formatInteger,
   formatRelativeHandshake,
   formatUptime,
 } from "@/lib/utils";
@@ -153,7 +154,7 @@ export default async function ServerPage({
           <div className={INFOBLOCK_CHROME}>
             <InfoblockBody
               label="Пиры"
-              value={latest ? `${latest.onlineCount} / ${latest.peerCount}` : "—"}
+              value={latest ? `${formatInteger(latest.onlineCount)} / ${formatInteger(latest.peerCount)}` : "—"}
               caption="сессии WG"
             />
           </div>

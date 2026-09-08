@@ -7,10 +7,13 @@ import {
   compareServerName,
   displayPeerEndpoint,
   displayPeerInternalIp,
+  formatBytes,
   formatDateTime,
   formatDbSizeGb,
+  formatInteger,
   formatRelativeHandshake,
   formatUptime,
+  groupThousands,
 } from "./utils";
 
 test("activeAwgVersionLabel returns only real protocol generations", () => {
@@ -63,6 +66,29 @@ test("formatUptime uses coarse Russian units", () => {
   assert.equal(formatUptime(new Date("2026-09-06T11:59:40.000Z"), now), "20 с");
   assert.equal(formatUptime(new Date("2026-09-06T10:00:00.000Z"), now), "2 ч");
   assert.equal(formatUptime(new Date("2026-09-04T10:00:00.000Z"), now), "2 дн 2 ч");
+  assert.equal(formatUptime(new Date("2022-04-18T12:00:00.000Z"), now), "1 602 дн");
+});
+
+test("groupThousands inserts a regular space every three integer digits", () => {
+  assert.equal(groupThousands("3456.8"), "3 456.8");
+  assert.equal(groupThousands("3456,8"), "3 456,8");
+  assert.equal(groupThousands("1234567,89"), "1 234 567,89");
+  assert.equal(groupThousands("12"), "12");
+  assert.equal(groupThousands("0,12"), "0,12");
+  assert.equal(groupThousands("-12345"), "-12 345");
+});
+
+test("formatInteger groups thousands and drops a fractional part", () => {
+  assert.equal(formatInteger(3456), "3 456");
+  assert.equal(formatInteger(12), "12");
+  assert.equal(formatInteger(Number.NaN), "0");
+});
+
+test("formatBytes groups thousands and keeps the existing decimal style", () => {
+  assert.equal(formatBytes(0), "0 B");
+  assert.equal(formatBytes(512), "512 B");
+  assert.equal(formatBytes(1000 * 1024), "1 000.0 KB");
+  assert.equal(formatBytes(3456.8 * 1024 ** 4), "3 456.8 TB");
 });
 
 test("formatDbSizeGb always uses two decimals, a comma, and Gb", () => {
@@ -71,6 +97,7 @@ test("formatDbSizeGb always uses two decimals, a comma, and Gb", () => {
   assert.equal(formatDbSizeGb(Number.NaN), "0,00 Gb");
   assert.equal(formatDbSizeGb(1024 ** 3), "1,00 Gb");
   assert.equal(formatDbSizeGb(Math.round(0.12 * 1024 ** 3)), "0,12 Gb");
+  assert.equal(formatDbSizeGb(3456.8 * 1024 ** 3), "3 456,80 Gb");
 });
 
 test("formatDateTime labels the timestamp as UTC", () => {
@@ -82,5 +109,6 @@ test("formatDateTime labels the timestamp as UTC", () => {
 test("formatRelativeHandshake uses the supplied nowSec snapshot", () => {
   const capturedSec = Date.parse("2026-09-08T12:00:00.000Z") / 1000;
   assert.equal(formatRelativeHandshake(BigInt(capturedSec - 40), capturedSec), "40 с назад");
+  assert.equal(formatRelativeHandshake(BigInt(capturedSec - 3456 * 86400), capturedSec), "3 456 дн назад");
   assert.equal(formatRelativeHandshake(0n, capturedSec), "никогда");
 });
