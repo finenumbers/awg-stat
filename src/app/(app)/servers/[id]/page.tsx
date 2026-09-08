@@ -196,7 +196,7 @@ export default async function ServerPage({
                             <span className={`rounded-full px-2 py-0.5 text-xs ${statusTone(status.tone)}`}>{status.label}</span>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            Handshake: {sample ? formatRelativeHandshake(sample.handshakeUnix) : "—"}
+                            Handshake: {sample ? formatRelativeHandshake(sample.handshakeUnix, Math.floor(sample.capturedAt.getTime() / 1000)) : "—"}
                             {peer.allowedIps ? ` · ${peer.allowedIps}` : ""}
                             {endpointLine ? ` · ${endpointLine}` : ""}
                           </p>

@@ -80,7 +80,7 @@ export default async function PeerPage({
             <InfoblockBody
               label="Статус"
               value={presence.label}
-              caption={`Handshake: ${latest ? formatRelativeHandshake(latest.handshakeUnix) : "—"}`}
+              caption={`Handshake: ${latest ? formatRelativeHandshake(latest.handshakeUnix, Math.floor(latest.capturedAt.getTime() / 1000)) : "—"}`}
               mutedClassName={
                 presence.kind === "online" || presence.kind === "offline"
                   ? "text-current/70"

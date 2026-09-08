@@ -43,16 +43,17 @@ export async function updateServerSsh(serverId: string, input: SshAuthUpdateInpu
   if (sshUpdateRequiresSecret(server.sshAuthMethod, input.authMethod, hasNewSecret)) {
     throw new Error(SSH_METHOD_SECRET_REQUIRED);
   }
-  if (hasNewSecret) {
-    await writeServerCredential(serverId, input);
-  }
-
-  await db.server.update({
-    where: { id: serverId },
-    data: {
-      sshUsername: input.username,
-      ...(hasNewSecret ? { sshAuthMethod: input.authMethod as AuthMethod } : {}),
-    },
+  await db.$transaction(async (tx) => {
+    if (hasNewSecret) {
+      await writeServerCredential(serverId, input, tx);
+    }
+    await tx.server.update({
+      where: { id: serverId },
+      data: {
+        sshUsername: input.username,
+        ...(hasNewSecret ? { sshAuthMethod: input.authMethod as AuthMethod } : {}),
+      },
+    });
   });
 
   await createAuditEvent({

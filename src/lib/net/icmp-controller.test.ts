@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ICMP_BACKOFF_MS, ICMP_FAILURES_BEFORE_BACKOFF } from "@/server/poll-defaults";
-
 import { IcmpProbeController } from "./icmp-controller";
 
 test("disables ICMP globally after permission failure", async () => {
@@ -13,32 +11,34 @@ test("disables ICMP globally after permission failure", async () => {
   });
   assert.equal(await controller.probe("s1", "vpn.example.com"), null);
   assert.equal(controller.isDisabled(), true);
-  assert.equal(controller.isDue("s2"), false);
+  assert.equal(controller.isDue(), false);
 });
 
-test("backs off a host after repeated timeouts", async () => {
-  let now = 10_000;
+test("keeps probing after repeated timeouts", async () => {
+  let pings = 0;
   const controller = new IcmpProbeController({
-    now: () => now,
+    now: () => 1_000,
     resolve: async () => "1.1.1.1",
-    ping: async () => ({ ok: false, kind: "timeout" }),
+    ping: async () => {
+      pings += 1;
+      return { ok: false, kind: "timeout" };
+    },
   });
-  for (let i = 0; i < ICMP_FAILURES_BEFORE_BACKOFF; i += 1) {
-    assert.equal(await controller.probe("s1", "vpn.example.com"), null);
+  for (let i = 0; i < 5; i += 1) {
+    assert.deepEqual(await controller.probe("s1", "vpn.example.com"), { rttMs: null });
   }
-  assert.equal(controller.isDue("s1"), false);
-  now += ICMP_BACKOFF_MS + 1;
-  assert.equal(controller.isDue("s1"), true);
+  assert.equal(pings, 5);
+  assert.equal(controller.isDue(), true);
 });
 
-test("successful ping resets backoff", async () => {
+test("successful ping returns current RTT", async () => {
   const controller = new IcmpProbeController({
     now: () => 1_000,
     resolve: async () => "1.1.1.1",
     ping: async () => ({ ok: true, rttMs: 12 }),
   });
-  assert.equal(await controller.probe("s1", "vpn.example.com"), 12);
-  assert.equal(controller.isDue("s1"), true);
+  assert.deepEqual(await controller.probe("s1", "vpn.example.com"), { rttMs: 12 });
+  assert.equal(controller.isDue(), true);
 });
 
 test("skips unsafe hosts without calling ping", async () => {

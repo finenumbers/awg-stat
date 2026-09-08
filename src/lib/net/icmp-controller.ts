@@ -3,14 +3,9 @@ import {
   pingAddress,
   resolveProbeAddress,
   type IcmpAttempt,
-  type IcmpFailKind,
 } from "@/lib/net/icmp-ping";
 import { isSafeProbeHost } from "@/lib/net/probe-host";
-import {
-  ICMP_BACKOFF_MS,
-  ICMP_DNS_CACHE_TTL_MS,
-  ICMP_FAILURES_BEFORE_BACKOFF,
-} from "@/server/poll-defaults";
+import { ICMP_DNS_CACHE_TTL_MS } from "@/server/poll-defaults";
 
 export type IcmpProbeDeps = {
   now: () => number;
@@ -18,10 +13,8 @@ export type IcmpProbeDeps = {
   ping: (ip: string) => Promise<IcmpAttempt>;
 };
 
-type BackoffEntry = {
-  failures: number;
-  nextAt: number;
-};
+/** `null` means the probe was skipped and the last stored result must stay as-is. */
+export type IcmpProbeResult = { rttMs: number | null } | null;
 
 type DnsEntry = {
   ip: string;
@@ -30,7 +23,6 @@ type DnsEntry = {
 
 export class IcmpProbeController {
   private disabled = false;
-  private readonly backoff = new Map<string, BackoffEntry>();
   private readonly dnsCache = new Map<string, DnsEntry>();
   private readonly deps: IcmpProbeDeps;
 
@@ -46,19 +38,12 @@ export class IcmpProbeController {
     return this.disabled;
   }
 
-  isDue(serverId: string): boolean {
-    if (this.disabled) {
-      return false;
-    }
-    const entry = this.backoff.get(serverId);
-    if (!entry || entry.failures < ICMP_FAILURES_BEFORE_BACKOFF) {
-      return true;
-    }
-    return this.deps.now() >= entry.nextAt;
+  isDue(): boolean {
+    return !this.disabled;
   }
 
-  async probe(serverId: string, host: string): Promise<number | null> {
-    if (!this.isDue(serverId)) {
+  async probe(serverId: string, host: string): Promise<IcmpProbeResult> {
+    if (!this.isDue()) {
       return null;
     }
     if (!isSafeProbeHost(host)) {
@@ -69,17 +54,18 @@ export class IcmpProbeController {
     try {
       ip = await this.resolveCached(host);
     } catch {
-      this.recordFailure(serverId, "dns");
-      return null;
+      return { rttMs: null };
     }
 
     const attempt = await this.deps.ping(ip);
     if (attempt.ok) {
-      this.recordSuccess(serverId);
-      return attempt.rttMs;
+      return { rttMs: attempt.rttMs };
     }
-    this.recordFailure(serverId, attempt.kind);
-    return null;
+    if (isIcmpPermanentlyUnavailable(attempt.kind)) {
+      this.disabled = true;
+      return null;
+    }
+    return { rttMs: null };
   }
 
   private async resolveCached(host: string): Promise<string> {
@@ -91,26 +77,6 @@ export class IcmpProbeController {
     const ip = await this.deps.resolve(host);
     this.dnsCache.set(host, { ip, expiresAt: now + ICMP_DNS_CACHE_TTL_MS });
     return ip;
-  }
-
-  private recordSuccess(serverId: string) {
-    this.backoff.delete(serverId);
-  }
-
-  private recordFailure(serverId: string, kind: IcmpFailKind) {
-    if (isIcmpPermanentlyUnavailable(kind)) {
-      this.disabled = true;
-      return;
-    }
-    if (kind === "invalid-host") {
-      return;
-    }
-    const entry = this.backoff.get(serverId) ?? { failures: 0, nextAt: 0 };
-    entry.failures += 1;
-    if (entry.failures >= ICMP_FAILURES_BEFORE_BACKOFF) {
-      entry.nextAt = this.deps.now() + ICMP_BACKOFF_MS;
-    }
-    this.backoff.set(serverId, entry);
   }
 }
 

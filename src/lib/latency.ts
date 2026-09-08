@@ -1,4 +1,4 @@
-import { isPollFresh } from "@/lib/presence";
+export const ICMP_UNAVAILABLE_LABEL = "Сервер недоступен";
 
 export function formatRttMs(ms: number | null | undefined): string {
   if (ms == null || !Number.isFinite(ms)) {
@@ -13,10 +13,12 @@ export function formatRttMs(ms: number | null | undefined): string {
 export function freshIcmpLabel(
   rttMs: number | null | undefined,
   at: Date | null | undefined,
-  nowMs = Date.now(),
 ): string | null {
-  if (rttMs == null || !isPollFresh(at, nowMs)) {
-    return null;
+  if (rttMs != null && Number.isFinite(rttMs)) {
+    return formatRttMs(rttMs);
   }
-  return formatRttMs(rttMs);
+  if (at) {
+    return ICMP_UNAVAILABLE_LABEL;
+  }
+  return null;
 }

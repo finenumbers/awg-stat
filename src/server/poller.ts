@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getSshSessionRegistry } from "@/lib/ssh/session-registry";
 import { POLL_DEADLINE_MS, POLL_INTERVAL_SEC, POLLER_LEASE_TTL_SEC } from "@/server/poll-defaults";
+import { isServerPollDue } from "@/server/poll-due";
 import { clearAllQueues, pruneQueues, queueFor } from "@/server/poller-queues";
 import { getPollerEpoch, getPollerState, pollerRuntime } from "@/server/poller-runtime";
 import { pollServer, pruneOldSamples } from "@/server/services/collector.service";
@@ -74,20 +75,41 @@ async function tick() {
     return;
   }
 
-  const servers = await db.server.findMany({ select: { id: true, lastPollAt: true } });
+  const servers = await db.server.findMany({
+    select: { id: true, lastPollAt: true, vpnInstance: { select: { lastSeenAt: true } } },
+  });
   const liveIds = servers.map((server) => server.id);
   getSshSessionRegistry().prune(liveIds);
   pruneQueues(liveIds);
 
   const now = Date.now();
-  const intervalMs = POLL_INTERVAL_SEC * 1000;
   const epoch = getPollerEpoch();
 
   for (const server of servers) {
-    const due = !server.lastPollAt || now - server.lastPollAt.getTime() >= intervalMs;
-    if (!due) continue;
+    if (
+      !isServerPollDue({
+        lastPollAt: server.lastPollAt,
+        instanceLastSeenAt: server.vpnInstance?.lastSeenAt,
+        nowMs: now,
+      })
+    ) {
+      continue;
+    }
     void queueFor(server.id).add(async () => {
       if (pollerRuntime.stopping || getPollerEpoch() !== epoch) {
+        return;
+      }
+      const current = await db.server.findUnique({
+        where: { id: server.id },
+        select: { lastPollAt: true, vpnInstance: { select: { lastSeenAt: true } } },
+      });
+      if (
+        !current ||
+        !isServerPollDue({
+          lastPollAt: current.lastPollAt,
+          instanceLastSeenAt: current.vpnInstance?.lastSeenAt,
+        })
+      ) {
         return;
       }
       try {

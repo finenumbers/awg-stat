@@ -93,6 +93,7 @@ export async function listServers() {
       serverSamples: {
         where: { capturedAt: { gte: new Date(Date.now() - MS_30M) } },
         orderBy: { capturedAt: "desc" },
+        select: { capturedAt: true, rxDelta: true, txDelta: true, onlineCount: true, peerCount: true },
       },
     },
   });
@@ -113,13 +114,20 @@ export async function getServerDetail(id: string) {
       vpnInstance: {
         include: {
           peers: {
-            include: { samples: { orderBy: { capturedAt: "desc" }, take: SPARKLINE_SAMPLES } },
+            include: {
+              samples: {
+                orderBy: { capturedAt: "desc" },
+                take: SPARKLINE_SAMPLES,
+                select: { capturedAt: true, handshakeUnix: true, rxDelta: true, txDelta: true },
+              },
+            },
           },
         },
       },
       serverSamples: {
         orderBy: { capturedAt: "desc" },
         take: 1,
+        select: { capturedAt: true, onlineCount: true, peerCount: true },
       },
     },
   });
@@ -333,25 +341,32 @@ export async function serversTraffic30d(serverIds: string[], now = Date.now()) {
   }
 
   const since30 = peerHourlySince(now);
-  const rows = await Promise.all(
-    serverIds.map(async (serverId) => {
-      const hourlyTotals = await db.peerHourlySample.aggregate({
-        where: {
-          hourStart: { gte: since30 },
-          peer: { vpnInstance: { serverId } },
-        },
-        _sum: { rxDelta: true, txDelta: true },
-      });
-      return {
-        serverId,
-        rx: hourlyTotals._sum.rxDelta ?? 0n,
-        tx: hourlyTotals._sum.txDelta ?? 0n,
-      };
+  const [hourlyRows, peerRows] = await Promise.all([
+    db.peerHourlySample.groupBy({
+      by: ["peerId"],
+      where: {
+        hourStart: { gte: since30 },
+        peer: { vpnInstance: { serverId: { in: serverIds } } },
+      },
+      _sum: { rxDelta: true, txDelta: true },
     }),
-  );
+    db.peer.findMany({
+      where: { vpnInstance: { serverId: { in: serverIds } } },
+      select: { id: true, vpnInstance: { select: { serverId: true } } },
+    }),
+  ]);
 
-  for (const row of rows) {
-    totals.set(row.serverId, { rx: row.rx, tx: row.tx });
+  const serverByPeer = new Map(peerRows.map((peer) => [peer.id, peer.vpnInstance.serverId]));
+  for (const row of hourlyRows) {
+    const serverId = serverByPeer.get(row.peerId);
+    if (!serverId) {
+      continue;
+    }
+    const current = totals.get(serverId) ?? emptyDirectionTotals();
+    totals.set(serverId, {
+      rx: current.rx + (row._sum.rxDelta ?? 0n),
+      tx: current.tx + (row._sum.txDelta ?? 0n),
+    });
   }
   return totals;
 }

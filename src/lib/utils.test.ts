@@ -9,6 +9,7 @@ import {
   displayPeerInternalIp,
   formatDateTime,
   formatDbSizeGb,
+  formatRelativeHandshake,
   formatUptime,
 } from "./utils";
 
@@ -76,4 +77,10 @@ test("formatDateTime labels the timestamp as UTC", () => {
   const text = formatDateTime(new Date("2026-09-05T14:45:19.000Z"));
   assert.match(text, /UTC$/);
   assert.match(text, /14:45:19/);
+});
+
+test("formatRelativeHandshake uses the supplied nowSec snapshot", () => {
+  const capturedSec = Date.parse("2026-09-08T12:00:00.000Z") / 1000;
+  assert.equal(formatRelativeHandshake(BigInt(capturedSec - 40), capturedSec), "40 с назад");
+  assert.equal(formatRelativeHandshake(0n, capturedSec), "никогда");
 });

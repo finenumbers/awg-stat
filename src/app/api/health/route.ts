@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
-import { getPollerState } from "@/server/poller";
 
 export async function GET() {
   try {
@@ -10,15 +9,18 @@ export async function GET() {
     return NextResponse.json({ ok: false }, { status: 503 });
   }
 
-  const { started, ownsLock } = getPollerState();
-  const latest = await db.server.aggregate({
-    _max: { lastPollAt: true },
-  });
+  const [lease, latest] = await Promise.all([
+    db.pollerLease.findUnique({ where: { id: "default" } }),
+    db.server.aggregate({
+      _max: { lastPollAt: true },
+    }),
+  ]);
   const lastPollAt = latest._max.lastPollAt;
+  const ownsLock = Boolean(lease?.ownerId && lease.expiresAt.getTime() > Date.now());
 
   return NextResponse.json({
     ok: true,
-    pollerStarted: started,
+    pollerStarted: ownsLock,
     pollerOwnsLock: ownsLock,
     lastPollAt: lastPollAt?.toISOString() ?? null,
     lastPollAgeSec: lastPollAt ? Math.floor((Date.now() - lastPollAt.getTime()) / 1000) : null,

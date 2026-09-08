@@ -1,4 +1,4 @@
-import type { AwgVersion } from "@prisma/client";
+import { Prisma, type AwgVersion } from "@prisma/client";
 
 import {
   awgPollCommand,
@@ -34,6 +34,10 @@ export class CollectorError extends Error {
     super(message);
     this.name = "CollectorError";
   }
+}
+
+function isGoneAfterDelete(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2025" || error.code === "P2003");
 }
 
 function endpointHost(endpoint: string | null | undefined): string | null {
@@ -157,6 +161,10 @@ export async function onboardExistingServer(serverId: string, userId: string | n
   });
 
   await persistPoll(serverId, result.containerName, result.parsed, result.inspect);
+  await db.server.update({
+    where: { id: serverId },
+    data: { lastPollAt: new Date(), lastPollError: null },
+  });
   await enrichServerPeerEndpoints(serverId);
   void userId;
 }
@@ -183,11 +191,14 @@ async function readVpnState(client: SshSession, prefix: DockerPrefix, containerN
   return { parsed, inspect, containerName };
 }
 
-function icmpWriteFields(icmpRttMs: number | null): { lastIcmpRttMs?: number; lastIcmpAt?: Date } {
-  if (icmpRttMs == null) {
+function icmpWriteFields(result: { rttMs: number | null } | null): {
+  lastIcmpRttMs?: number | null;
+  lastIcmpAt?: Date;
+} {
+  if (result == null) {
     return {};
   }
-  return { lastIcmpRttMs: icmpRttMs, lastIcmpAt: new Date() };
+  return { lastIcmpRttMs: result.rttMs, lastIcmpAt: new Date() };
 }
 
 async function pollRemote(
@@ -247,7 +258,7 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
   try {
     const config = await sshConfigForServer(serverId);
     const result = await pollRemote(serverId, config, prefix, containerName, deadlineMs);
-    const icmpRttMs = await icmpPromise;
+    const icmpResult = await icmpPromise;
     if (!canWritePoll(startedEpoch)) {
       return;
     }
@@ -262,10 +273,13 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
     await persistPoll(serverId, result.containerName, result.parsed, result.inspect);
     await db.server.update({
       where: { id: serverId },
-      data: { lastPollAt: new Date(), lastPollError: null, ...icmpWriteFields(icmpRttMs) },
+      data: { lastPollAt: new Date(), lastPollError: null, ...icmpWriteFields(icmpResult) },
     });
     await enrichServerPeerEndpoints(serverId);
   } catch (error) {
+    if (isGoneAfterDelete(error)) {
+      return;
+    }
     const stillThere = await db.server.findUnique({
       where: { id: serverId },
       select: { id: true },
@@ -275,11 +289,11 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
     }
     const message = error instanceof Error ? error.message : "Ошибка опроса";
     console.error(`[collector] poll failed server=${serverId}: ${message}`);
-    const icmpRttMs = await icmpPromise;
+    const icmpResult = await icmpPromise;
     if (canWritePoll(startedEpoch)) {
       await db.server.update({
         where: { id: serverId },
-        data: { lastPollAt: new Date(), lastPollError: message, ...icmpWriteFields(icmpRttMs) },
+        data: { lastPollAt: new Date(), lastPollError: message, ...icmpWriteFields(icmpResult) },
       });
     }
     throw error;
@@ -287,6 +301,22 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
 }
 
 async function persistPoll(
+  serverId: string,
+  containerName: string,
+  parsed: ParsedPoll,
+  inspect: ParsedDockerInspect,
+) {
+  try {
+    await persistPollUnlocked(serverId, containerName, parsed, inspect);
+  } catch (error) {
+    if (isGoneAfterDelete(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function persistPollUnlocked(
   serverId: string,
   containerName: string,
   parsed: ParsedPoll,
@@ -326,7 +356,18 @@ async function persistPoll(
     },
   });
 
-  const existing = await db.peer.findMany({ where: { vpnInstanceId: instance.id } });
+  const existing = await db.peer.findMany({
+    where: { vpnInstanceId: instance.id },
+    select: {
+      id: true,
+      publicKey: true,
+      status: true,
+      endpoint: true,
+      endpointCountryName: true,
+      endpointCityName: true,
+      endpointOrganization: true,
+    },
+  });
   const existingByKey = new Map(existing.map((peer) => [peer.publicKey, peer]));
   const peerIds = existing.map((peer) => peer.id);
   const lastSamples = existing.length
@@ -334,6 +375,7 @@ async function persistPoll(
         where: { peerId: { in: peerIds } },
         orderBy: { capturedAt: "desc" },
         distinct: ["peerId"],
+        select: { peerId: true, rxBytes: true, txBytes: true, online: true },
       })
     : [];
   const lastEvents = existing.length
@@ -341,6 +383,7 @@ async function persistPoll(
         where: { peerId: { in: peerIds } },
         orderBy: { occurredAt: "desc" },
         distinct: ["peerId"],
+        select: { id: true, peerId: true, kind: true, endpoint: true },
       })
     : [];
   const lastByPeerId = new Map(lastSamples.map((sample) => [sample.peerId, sample]));
