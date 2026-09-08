@@ -100,7 +100,7 @@ export default async function OverviewPage() {
                         <CardTitle>{server.name}</CardTitle>
                         <CardDescription>{server.host}</CardDescription>
                       </div>
-                      <div className="shrink-0 text-right">
+                      <div className="flex shrink-0 flex-col items-end gap-1">
                         <span
                           className={`rounded-full px-2 py-0.5 text-xs ${
                             pollBadge.tone === "ok"

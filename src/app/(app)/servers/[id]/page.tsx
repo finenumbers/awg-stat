@@ -112,7 +112,7 @@ export default async function ServerPage({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">{server.name}</h1>
-            <div>
+            <div className="flex flex-wrap items-center gap-2">
               <span className={`rounded-full px-2 py-0.5 text-xs ${statusTone(pollBadge.tone)}`}>
                 {pollBadge.label}
               </span>
