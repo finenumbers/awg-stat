@@ -94,7 +94,7 @@ export default async function OverviewPage() {
             return (
               <Link key={server.id} href={`/servers/${server.id}`}>
                 <Card className="h-full transition-colors hover:bg-accent/40">
-                  <CardHeader>
+                  <CardHeader className="pb-2.5">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <CardTitle>{server.name}</CardTitle>
