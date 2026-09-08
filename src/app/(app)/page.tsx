@@ -4,8 +4,9 @@ import { Suspense } from "react";
 import { Sparkline } from "@/components/charts/traffic-chart";
 import { WindowTrafficValues } from "@/components/charts/window-traffic";
 import { DeletionNotice } from "@/components/servers/deletion-notice";
+import { ServerIcmpHint } from "@/components/servers/server-icmp-hint";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ServerLatencyReadout } from "@/components/servers/server-latency";
+import { freshIcmpLabel } from "@/lib/latency";
 import { serverPollBadge } from "@/lib/presence";
 import { activeAwgVersionLabel, formatDbSizeGb } from "@/lib/utils";
 import { getDatabaseSizeBytes } from "@/server/services/database.service";
@@ -85,6 +86,7 @@ export default async function OverviewPage() {
               running: Boolean(server.vpnInstance?.running),
               versionLabel: version,
             });
+            const icmpLabel = freshIcmpLabel(server.lastIcmpRttMs, server.lastIcmpAt);
             const window30m = sumSampleDeltas(server.serverSamples);
             const window24h = traffic24h.get(server.id) ?? { rx: 0n, tx: 0n };
             const window30d = traffic30d.get(server.id) ?? { rx: 0n, tx: 0n };
@@ -98,15 +100,18 @@ export default async function OverviewPage() {
                         <CardTitle>{server.name}</CardTitle>
                         <CardDescription>{server.host}</CardDescription>
                       </div>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs ${
-                          pollBadge.tone === "ok"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-amber-100 text-amber-900"
-                        }`}
-                      >
-                        {pollBadge.label}
-                      </span>
+                      <div className="shrink-0 text-right">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs ${
+                            pollBadge.tone === "ok"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-amber-100 text-amber-900"
+                          }`}
+                        >
+                          {pollBadge.label}
+                        </span>
+                        <ServerIcmpHint label={icmpLabel} />
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="flex items-end justify-between gap-4">
@@ -159,7 +164,6 @@ export default async function OverviewPage() {
                           />
                         </p>
                       </div>
-                      <ServerLatencyReadout samples={server.latencySamples} />
                       {server.lastPollError && (
                         <p className="text-destructive">{server.lastPollError}</p>
                       )}

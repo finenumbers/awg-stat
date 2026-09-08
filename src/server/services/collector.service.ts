@@ -17,11 +17,9 @@ import {
   type ParsedPoll,
 } from "@/lib/amnezia/parse";
 import { db } from "@/lib/db";
-import { shouldPersistLatencySample } from "@/lib/latency";
 import { getIcmpProbeController } from "@/lib/net/icmp-controller";
 import { withDeadline, withSshConnection, type SshClient, type SshConnectionConfig, type SshSession } from "@/lib/ssh/client";
 import { canCommitPoll, shouldRetrySshPoll } from "@/lib/ssh/errors";
-import { measureSshRttMs } from "@/lib/ssh/rtt";
 import { getSshSessionRegistry } from "@/lib/ssh/session-registry";
 import { isPeerOnline, presenceTransition, previousPresenceOnline } from "@/lib/presence";
 import { POLL_DEADLINE_MS, POLL_INTERVAL_SEC, RAW_RETENTION_DAYS } from "@/server/poll-defaults";
@@ -185,13 +183,19 @@ async function readVpnState(client: SshSession, prefix: DockerPrefix, containerN
   return { parsed, inspect, containerName };
 }
 
+function icmpWriteFields(icmpRttMs: number | null): { lastIcmpRttMs?: number; lastIcmpAt?: Date } {
+  if (icmpRttMs == null) {
+    return {};
+  }
+  return { lastIcmpRttMs: icmpRttMs, lastIcmpAt: new Date() };
+}
+
 async function pollRemote(
   serverId: string,
   config: SshConnectionConfig,
   prefix: DockerPrefix,
   containerName: string,
   deadlineMs: number,
-  onSshRtt?: (ms: number | null) => void,
 ): Promise<{
   parsed: ParsedPoll;
   inspect: ParsedDockerInspect;
@@ -205,8 +209,6 @@ async function pollRemote(
   const attempt = async (alreadyRetried: boolean) => {
     try {
       const { client, hostKeyFingerprint } = await registry.acquire(serverId, config);
-      const sshRttMs = await measureSshRttMs(client);
-      onSshRtt?.(sshRttMs);
       const result = await withDeadline(readVpnState(client, prefix, containerName), remaining(), () => {
         registry.invalidate(serverId);
       });
@@ -226,19 +228,6 @@ async function pollRemote(
   return attempt(false);
 }
 
-export async function persistLatencySample(
-  serverId: string,
-  icmpRttMs: number | null,
-  sshRttMs: number | null,
-) {
-  if (!shouldPersistLatencySample(icmpRttMs, sshRttMs)) {
-    return;
-  }
-  await db.serverLatencySample.create({
-    data: { serverId, icmpRttMs, sshRttMs },
-  });
-}
-
 export async function pollServer(serverId: string, options?: { deadlineMs?: number; epoch?: number | null }) {
   const server = await db.server.findUnique({
     where: { id: serverId },
@@ -254,13 +243,10 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
   const icmpPromise = getIcmpProbeController()
     .probe(server.id, server.host)
     .catch(() => null);
-  let sshRttMs: number | null = null;
 
   try {
     const config = await sshConfigForServer(serverId);
-    const result = await pollRemote(serverId, config, prefix, containerName, deadlineMs, (ms) => {
-      sshRttMs = ms;
-    });
+    const result = await pollRemote(serverId, config, prefix, containerName, deadlineMs);
     const icmpRttMs = await icmpPromise;
     if (!canWritePoll(startedEpoch)) {
       return;
@@ -273,11 +259,10 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
       });
     }
 
-    await persistLatencySample(serverId, icmpRttMs, sshRttMs);
     await persistPoll(serverId, result.containerName, result.parsed, result.inspect);
     await db.server.update({
       where: { id: serverId },
-      data: { lastPollAt: new Date(), lastPollError: null },
+      data: { lastPollAt: new Date(), lastPollError: null, ...icmpWriteFields(icmpRttMs) },
     });
     await enrichServerPeerEndpoints(serverId);
   } catch (error) {
@@ -292,10 +277,9 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
     console.error(`[collector] poll failed server=${serverId}: ${message}`);
     const icmpRttMs = await icmpPromise;
     if (canWritePoll(startedEpoch)) {
-      await persistLatencySample(serverId, icmpRttMs, sshRttMs);
       await db.server.update({
         where: { id: serverId },
-        data: { lastPollAt: new Date(), lastPollError: message },
+        data: { lastPollAt: new Date(), lastPollError: message, ...icmpWriteFields(icmpRttMs) },
       });
     }
     throw error;
@@ -530,7 +514,6 @@ export async function pruneOldSamples() {
   const hourlyCutoff = new Date(Date.now() - settings.hourlyRetentionDays * 24 * 60 * 60 * 1000);
   await db.peerSample.deleteMany({ where: { capturedAt: { lt: rawCutoff } } });
   await db.serverSample.deleteMany({ where: { capturedAt: { lt: rawCutoff } } });
-  await db.serverLatencySample.deleteMany({ where: { capturedAt: { lt: rawCutoff } } });
   await db.peerPresenceEvent.deleteMany({ where: { occurredAt: { lt: rawCutoff } } });
   await db.peerHourlySample.deleteMany({ where: { hourStart: { lt: hourlyCutoff } } });
   await db.ipGeoCache.deleteMany({ where: { lookedUpAt: { lt: rawCutoff } } });

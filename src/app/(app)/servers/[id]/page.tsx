@@ -6,10 +6,11 @@ import { Sparkline } from "@/components/charts/traffic-chart";
 import { TrafficWindows } from "@/components/charts/traffic-windows";
 import { WindowTrafficValues } from "@/components/charts/window-traffic";
 import { ActivePeersToggle } from "@/components/servers/active-peers-toggle";
-import { ServerLatencyReadout } from "@/components/servers/server-latency";
+import { ServerIcmpHint } from "@/components/servers/server-icmp-hint";
 import { DeleteServerDialog } from "@/components/servers/delete-server-dialog";
 import { ServerSettingsDialog } from "@/components/servers/server-settings-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { freshIcmpLabel } from "@/lib/latency";
 import { peerPresence, serverPollBadge } from "@/lib/presence";
 import {
   activeAwgVersionLabel,
@@ -98,6 +99,7 @@ export default async function ServerPage({
     running: Boolean(server.vpnInstance?.running),
     versionLabel: version,
   });
+  const icmpLabel = freshIcmpLabel(server.lastIcmpRttMs, server.lastIcmpAt);
   const lastPollLabel = latest
     ? formatDateTime(latest.capturedAt)
     : server.lastPollAt
@@ -110,9 +112,12 @@ export default async function ServerPage({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">{server.name}</h1>
-            <span className={`rounded-full px-2 py-0.5 text-xs ${statusTone(pollBadge.tone)}`}>
-              {pollBadge.label}
-            </span>
+            <div>
+              <span className={`rounded-full px-2 py-0.5 text-xs ${statusTone(pollBadge.tone)}`}>
+                {pollBadge.label}
+              </span>
+              <ServerIcmpHint label={icmpLabel} />
+            </div>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {server.host}
@@ -126,9 +131,6 @@ export default async function ServerPage({
               ? ` · аптайм ${formatUptime(server.vpnInstance.containerStartedAt)}`
               : ""}
           </p>
-          <div className="mt-2">
-            <ServerLatencyReadout samples={server.latencySamples} compact />
-          </div>
         </div>
         <div className="flex shrink-0 gap-2">
           <ServerSettingsDialog
