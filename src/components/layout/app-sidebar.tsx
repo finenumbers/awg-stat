@@ -28,7 +28,7 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
           {SIDEBAR_WIDTH_LABEL}
         </span>
         <div className="flex min-h-0 w-0 min-w-full flex-1 flex-col">
-          <Link href="/" className="block px-3">
+          <Link href="/" className="block">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/brand/fine-numbers.png"
