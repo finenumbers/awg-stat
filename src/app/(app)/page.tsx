@@ -164,9 +164,6 @@ export default async function OverviewPage() {
                           />
                         </p>
                       </div>
-                      {server.lastPollError && (
-                        <p className="text-destructive">{server.lastPollError}</p>
-                      )}
                     </div>
                     <div className="shrink-0">
                       <Sparkline values={spark} />

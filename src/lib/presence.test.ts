@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { PROTOCOL_TRAFFIC_MAX_BYTES } from "@/server/poll-defaults";
 
 import {
+  POLL_ERROR_LABEL,
   isPeerOnline,
   isPollFresh,
   isProtocolTraffic,
@@ -246,4 +247,28 @@ test("serverPollBadge prefers stale over frozen running flag", () => {
     nowMs: NOW,
   });
   assert.equal(badge.kind, "stale");
+});
+
+test("serverPollBadge replaces protocol with Ошибка опроса", () => {
+  const badge = serverPollBadge({
+    lastPollAt: new Date(NOW - 15_000),
+    lastPollError: "Not connected",
+    running: true,
+    versionLabel: "AmneziaWG 3.1",
+    nowMs: NOW,
+  });
+  assert.equal(badge.kind, "offline");
+  assert.equal(badge.label, POLL_ERROR_LABEL);
+});
+
+test("serverPollBadge prefers stale over lastPollError", () => {
+  const badge = serverPollBadge({
+    lastPollAt: new Date(NOW - 3 * 3600 * 1000),
+    lastPollError: "Not connected",
+    running: true,
+    versionLabel: "AmneziaWG 3.1",
+    nowMs: NOW,
+  });
+  assert.equal(badge.kind, "stale");
+  assert.equal(badge.label, "данные устарели");
 });

@@ -162,6 +162,8 @@ export function presenceEventView(kind: PresenceEventKind): Presence {
   return { kind: "offline", label: "офлайн", tone: "warn" };
 }
 
+export const POLL_ERROR_LABEL = "Ошибка опроса";
+
 export function serverPollBadge(input: {
   lastPollAt?: Date | null;
   lastSampleAt?: Date | null;
@@ -175,7 +177,7 @@ export function serverPollBadge(input: {
     return { kind: "stale", label: "данные устарели", tone: "warn" };
   }
   if (input.lastPollError) {
-    return { kind: "offline", label: "ошибка опроса", tone: "warn" };
+    return { kind: "offline", label: POLL_ERROR_LABEL, tone: "warn" };
   }
   if (input.running) {
     return { kind: "online", label: input.versionLabel ?? "контейнер запущен", tone: "ok" };
