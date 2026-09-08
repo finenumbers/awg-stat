@@ -14,6 +14,15 @@ function isServerActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function navItemClass(active: boolean) {
+  return cn(
+    "block w-full truncate rounded-md px-2 py-1.5 text-left text-sm font-bold transition-colors",
+    active
+      ? "bg-black text-white hover:bg-black hover:text-white"
+      : "text-black hover:bg-muted",
+  );
+}
+
 export function AppSidebar({ servers }: { servers: NavServer[] }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -48,12 +57,7 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
                   href={href}
                   title={server.name}
                   aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "block w-full truncate rounded-md px-2 py-1.5 text-sm font-bold transition-colors",
-                    active
-                      ? "bg-black text-white hover:bg-black hover:text-white"
-                      : "text-black hover:bg-muted",
-                  )}
+                  className={navItemClass(active)}
                 >
                   {server.name}
                 </Link>
@@ -64,18 +68,13 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
             <Link
               href="/servers/new"
               aria-current={pathname === "/servers/new" ? "page" : undefined}
-              className={cn(
-                "block w-full rounded-md px-2 py-1.5 text-sm transition-colors",
-                pathname === "/servers/new"
-                  ? "bg-black font-bold text-white hover:bg-black hover:text-white"
-                  : "text-muted-foreground hover:bg-muted",
-              )}
+              className={navItemClass(pathname === "/servers/new")}
             >
               Добавить
             </Link>
             <button
               type="button"
-              className="w-full rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+              className={navItemClass(false)}
               onClick={async () => {
                 await signOut();
                 router.push("/login");

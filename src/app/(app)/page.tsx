@@ -90,7 +90,7 @@ export default async function OverviewPage() {
   return (
     <main className="w-full space-y-8 p-8">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Мониторинг серверов AmneziaVPN</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Мониторинг серверов AmneziaVPN</h1>
         <p className="ml-auto text-sm font-bold text-black">Объем БД: {formatDbSizeGb(databaseSizeBytes)}</p>
       </div>
 

@@ -58,9 +58,9 @@ export default async function PeerPage({
     <main className="w-full space-y-6 p-8">
       <div>
         <div className="flex items-baseline justify-between gap-4">
-          <h1 className="min-w-0 text-2xl font-semibold tracking-tight">{name}</h1>
+          <h1 className="min-w-0 text-lg font-semibold tracking-tight">{name}</h1>
           {internalIp ? (
-            <p className="shrink-0 text-2xl font-semibold tabular-nums tracking-tight text-right">
+            <p className="shrink-0 text-lg font-semibold tabular-nums tracking-tight text-right">
               {internalIp}
             </p>
           ) : null}
