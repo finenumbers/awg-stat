@@ -94,6 +94,11 @@ export async function listServers() {
         where: { capturedAt: { gte: new Date(Date.now() - MS_30M) } },
         orderBy: { capturedAt: "desc" },
       },
+      latencySamples: {
+        where: { capturedAt: { gte: new Date(Date.now() - MS_30M) } },
+        orderBy: { capturedAt: "desc" },
+        select: { capturedAt: true, icmpRttMs: true, sshRttMs: true },
+      },
     },
   });
   return [...servers].sort((a, b) => compareServerName(a.name, b.name));
@@ -120,6 +125,11 @@ export async function getServerDetail(id: string) {
       serverSamples: {
         orderBy: { capturedAt: "desc" },
         take: 1,
+      },
+      latencySamples: {
+        where: { capturedAt: { gte: new Date(Date.now() - MS_30M) } },
+        orderBy: { capturedAt: "desc" },
+        select: { capturedAt: true, icmpRttMs: true, sshRttMs: true },
       },
     },
   });
@@ -208,19 +218,22 @@ async function assertServerDataGone(
   peerIds: string[],
 ) {
   const peerWhere = peerIds.length > 0 ? { peerId: { in: peerIds } } : null;
-  const [servers, credentials, instances, serverSamples, peers, peerSamples, hourly, presence] = await Promise.all([
-    tx.server.count({ where: { id: serverId } }),
-    tx.serverCredential.count({ where: { serverId } }),
-    tx.vpnInstance.count({
-      where: vpnInstanceId ? { OR: [{ serverId }, { id: vpnInstanceId }] } : { serverId },
-    }),
-    tx.serverSample.count({ where: { serverId } }),
-    peerIds.length ? tx.peer.count({ where: { id: { in: peerIds } } }) : 0,
-    peerWhere ? tx.peerSample.count({ where: peerWhere }) : 0,
-    peerWhere ? tx.peerHourlySample.count({ where: peerWhere }) : 0,
-    peerWhere ? tx.peerPresenceEvent.count({ where: peerWhere }) : 0,
-  ]);
-  const leftover = servers + credentials + instances + serverSamples + peers + peerSamples + hourly + presence;
+  const [servers, credentials, instances, serverSamples, latencySamples, peers, peerSamples, hourly, presence] =
+    await Promise.all([
+      tx.server.count({ where: { id: serverId } }),
+      tx.serverCredential.count({ where: { serverId } }),
+      tx.vpnInstance.count({
+        where: vpnInstanceId ? { OR: [{ serverId }, { id: vpnInstanceId }] } : { serverId },
+      }),
+      tx.serverSample.count({ where: { serverId } }),
+      tx.serverLatencySample.count({ where: { serverId } }),
+      peerIds.length ? tx.peer.count({ where: { id: { in: peerIds } } }) : 0,
+      peerWhere ? tx.peerSample.count({ where: peerWhere }) : 0,
+      peerWhere ? tx.peerHourlySample.count({ where: peerWhere }) : 0,
+      peerWhere ? tx.peerPresenceEvent.count({ where: peerWhere }) : 0,
+    ]);
+  const leftover =
+    servers + credentials + instances + serverSamples + latencySamples + peers + peerSamples + hourly + presence;
   if (leftover > 0) {
     console.error("[deleteServer] leftover rows", {
       serverId,
@@ -228,6 +241,7 @@ async function assertServerDataGone(
       credentials,
       instances,
       serverSamples,
+      latencySamples,
       peers,
       peerSamples,
       hourly,

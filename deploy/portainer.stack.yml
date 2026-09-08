@@ -81,6 +81,8 @@ services:
     container_name: gate-poller
     restart: unless-stopped
     stop_grace_period: 20s
+    cap_add:
+      - NET_RAW
     environment:
       DATABASE_URL: postgresql://gate:${POSTGRES_PASSWORD}@postgres:5432/gate?schema=public
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}

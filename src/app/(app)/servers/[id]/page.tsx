@@ -6,6 +6,7 @@ import { Sparkline } from "@/components/charts/traffic-chart";
 import { TrafficWindows } from "@/components/charts/traffic-windows";
 import { WindowTrafficValues } from "@/components/charts/window-traffic";
 import { ActivePeersToggle } from "@/components/servers/active-peers-toggle";
+import { ServerLatencyReadout } from "@/components/servers/server-latency";
 import { DeleteServerDialog } from "@/components/servers/delete-server-dialog";
 import { ServerSettingsDialog } from "@/components/servers/server-settings-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -125,6 +126,9 @@ export default async function ServerPage({
               ? ` · аптайм ${formatUptime(server.vpnInstance.containerStartedAt)}`
               : ""}
           </p>
+          <div className="mt-2">
+            <ServerLatencyReadout samples={server.latencySamples} compact />
+          </div>
         </div>
         <div className="flex shrink-0 gap-2">
           <ServerSettingsDialog

@@ -12,6 +12,7 @@
 - Читает несекретные селекторы `awg show all` и файл `/opt/amnezia/awg/clientsTable`
 - Хранит историю трафика в своей PostgreSQL
 - Показывает имена пиров из `clientsTable` на VPN
+- Периодически меряет задержку до каждого хоста: ICMP (если доступен) и SSH RTT на живой сессии
 
 ## Образы GHCR
 
@@ -116,6 +117,16 @@ APP_URL=https://stat.example.com
 - **502 Bad Gateway** — `gate-app` ещё не готов, не в сети `proxy`, или указан не тот hostname/порт. Нужны именно `gate-app` и `8088`.
 - **Страница логина зацикливается** — `APP_URL` не совпадает с доменом Proxy Host или Force SSL выключен при заходе по HTTPS.
 - **NPM не резолвит `gate-app`** — разные Docker Engine или сеть не `proxy`.
+
+## Задержка до серверов
+
+Поллер меряет ICMP (один echo на резолвленный IP) и RTT команды `true` по уже открытой SSH-сессии. Отдельный TCP connect на `:22` не делается.
+
+ICMP **не обязателен**. В Docker нужен `cap_add: NET_RAW` у `gate-poller` (уже в compose/стеке). Без capability или если облако режет ICMP, в UI будет «ICMP н/д», SSH RTT продолжает писаться. Проверка:
+
+```bash
+docker exec gate-poller ping -c 1 <host>
+```
 
 ## Безопасность чтения
 

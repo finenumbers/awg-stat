@@ -147,9 +147,10 @@ model Server {
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 
-  credential    ServerCredential?
-  vpnInstance   VpnInstance?
-  serverSamples ServerSample[]
+  credential      ServerCredential?
+  vpnInstance     VpnInstance?
+  serverSamples   ServerSample[]
+  latencySamples  ServerLatencySample[]
 
   @@unique([host, port])
   @@map("server")
@@ -290,6 +291,18 @@ model ServerSample {
 
   @@index([serverId, capturedAt(sort: Desc)])
   @@map("server_sample")
+}
+
+model ServerLatencySample {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  capturedAt DateTime @default(now())
+  icmpRttMs  Int?
+  sshRttMs   Int?
+
+  @@index([serverId, capturedAt(sort: Desc)])
+  @@map("server_latency_sample")
 }
 
 model AuditEvent {

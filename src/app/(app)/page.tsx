@@ -5,9 +5,9 @@ import { Sparkline } from "@/components/charts/traffic-chart";
 import { WindowTrafficValues } from "@/components/charts/window-traffic";
 import { DeletionNotice } from "@/components/servers/deletion-notice";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ServerLatencyReadout } from "@/components/servers/server-latency";
 import { serverPollBadge } from "@/lib/presence";
 import { activeAwgVersionLabel, formatDbSizeGb } from "@/lib/utils";
-import { ONLINE_THRESHOLD_SEC, POLL_INTERVAL_SEC } from "@/server/poll-defaults";
 import { getDatabaseSizeBytes } from "@/server/services/database.service";
 import { listServers, serversTraffic24h, serversTraffic30d } from "@/server/services/server.service";
 
@@ -159,6 +159,7 @@ export default async function OverviewPage() {
                           />
                         </p>
                       </div>
+                      <ServerLatencyReadout samples={server.latencySamples} />
                       {server.lastPollError && (
                         <p className="text-destructive">{server.lastPollError}</p>
                       )}
@@ -173,11 +174,6 @@ export default async function OverviewPage() {
           })}
         </div>
       )}
-
-      <p className="text-xs text-muted-foreground">
-        Сессия WG {ONLINE_THRESHOLD_SEC} с · опрос каждые {POLL_INTERVAL_SEC} с · мелкий трафик на
-        графике — keepalive/handshake
-      </p>
     </main>
   );
 }

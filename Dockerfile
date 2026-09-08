@@ -15,7 +15,7 @@ COPY . .
 
 ENV DATABASE_URL=postgresql://gate:gate@postgres:5432/gate?schema=public
 ENV NEXT_TELEMETRY_DISABLED=1
-ARG APP_VERSION=0.1.20
+ARG APP_VERSION=0.1.21
 ARG BUILD_SHA=unknown
 ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 ENV NEXT_PUBLIC_BUILD_SHA=$BUILD_SHA
@@ -67,7 +67,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends openssl ca-certificates iputils-ping \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 --gid nodejs nextjs
