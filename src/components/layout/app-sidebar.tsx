@@ -72,6 +72,8 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
             >
               Пиры
             </Link>
+          </div>
+          <div className="mt-2 flex flex-col gap-1 border-t pt-2">
             <Link
               href="/servers/new"
               aria-current={pathname === "/servers/new" ? "page" : undefined}

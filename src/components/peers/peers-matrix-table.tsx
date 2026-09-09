@@ -46,7 +46,7 @@ export function PeersMatrixTable({ matrix }: { matrix: PeersMatrix }) {
             <th
               scope="col"
               className={cn(
-                "sticky top-0 left-0 z-30 h-8 bg-background px-2 text-left align-middle text-sm font-medium whitespace-nowrap text-foreground",
+                "sticky top-0 left-0 z-30 h-8 bg-background px-2 text-center align-middle text-sm font-medium whitespace-nowrap text-foreground",
                 HEAD_SHADOW,
               )}
             >
@@ -59,7 +59,7 @@ export function PeersMatrixTable({ matrix }: { matrix: PeersMatrix }) {
                 scope="col"
                 title={server.name}
                 className={cn(
-                  "sticky top-0 z-20 h-8 bg-background px-2 text-right align-middle text-sm font-medium whitespace-nowrap text-foreground",
+                  "sticky top-0 z-20 h-8 bg-background px-2 text-center align-middle text-sm font-medium whitespace-nowrap text-foreground",
                   server.id === lastServerId ? HEAD_SHADOW_LAST : HEAD_SHADOW,
                 )}
               >
