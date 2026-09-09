@@ -39,6 +39,7 @@ export async function createServerAction(formData: FormData): Promise<ActionResu
     const server = await createAndOnboardServer(parsed.data, ssh.data, session.user.id);
     revalidatePath("/");
     revalidatePath("/", "layout");
+    revalidatePath("/peers");
     return { ok: true, data: { id: server.id } };
   } catch (error) {
     if (isDuplicateServerHostPort(error)) {
@@ -71,6 +72,7 @@ export async function deleteServerAction(id: string): Promise<ActionResult<{ nam
     revalidatePath("/");
     revalidatePath("/", "layout");
     revalidatePath(`/servers/${id}`);
+    revalidatePath("/peers");
     return { ok: true, data: { name: result.name } };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Не удалось удалить" };

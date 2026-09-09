@@ -64,7 +64,14 @@ export function AppSidebar({ servers }: { servers: NavServer[] }) {
               );
             })}
           </nav>
-          <div className="mt-2 flex flex-col gap-1">
+          <div className="mt-2 flex flex-col gap-1 border-t pt-2">
+            <Link
+              href="/peers"
+              aria-current={pathname === "/peers" ? "page" : undefined}
+              className={navItemClass(pathname === "/peers")}
+            >
+              Пиры
+            </Link>
             <Link
               href="/servers/new"
               aria-current={pathname === "/servers/new" ? "page" : undefined}

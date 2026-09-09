@@ -1,6 +1,7 @@
 import { Prisma, type AuthMethod } from "@prisma/client";
 
 import { db } from "@/lib/db";
+import { buildPeersTrafficMatrix, type PeersMatrix } from "@/lib/peers-matrix";
 import { filterPointsSince } from "@/lib/traffic-points";
 import { comparePeerInternalIp, compareServerName } from "@/lib/utils";
 import type { SshAuthInput } from "@/lib/validations/identity";
@@ -369,6 +370,44 @@ export async function serversTraffic30d(serverIds: string[], now = Date.now()) {
     });
   }
   return totals;
+}
+
+export async function listPeersTrafficMatrix(now = Date.now()): Promise<PeersMatrix> {
+  const [servers, peers] = await Promise.all([
+    listServerNavItems(),
+    db.peer.findMany({
+      where: { status: "ACTIVE", vpnName: { not: null } },
+      select: {
+        id: true,
+        vpnName: true,
+        vpnInstance: { select: { serverId: true } },
+      },
+    }),
+  ]);
+
+  const mapped = peers.map((peer) => ({
+    id: peer.id,
+    name: peer.vpnName ?? "",
+    serverId: peer.vpnInstance.serverId,
+  }));
+  const namedIds = mapped.filter((peer) => peer.name.trim()).map((peer) => peer.id);
+  const traffic = new Map<string, TrafficDirectionTotals>();
+
+  if (namedIds.length > 0) {
+    const hourlyRows = await db.peerHourlySample.groupBy({
+      by: ["peerId"],
+      where: { peerId: { in: namedIds }, hourStart: { gte: peerHourlySince(now) } },
+      _sum: { rxDelta: true, txDelta: true },
+    });
+    for (const row of hourlyRows) {
+      traffic.set(row.peerId, {
+        rx: row._sum.rxDelta ?? 0n,
+        tx: row._sum.txDelta ?? 0n,
+      });
+    }
+  }
+
+  return buildPeersTrafficMatrix(servers, mapped, traffic);
 }
 
 export async function peersTrafficTotals(peerIds: string[]) {
