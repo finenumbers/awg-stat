@@ -6,7 +6,7 @@ export type PeersMatrixPeer = { id: string; name: string; serverId: string };
 
 export type PeersMatrixTraffic = Map<string, { rx: bigint; tx: bigint }>;
 
-export type PeersMatrixCell = { peerId: string; bytes: bigint };
+export type PeersMatrixCell = { peerId: string; rx: bigint; tx: bigint };
 
 export type PeersMatrixRow = { name: string; cells: Array<PeersMatrixCell | null> };
 
@@ -15,7 +15,7 @@ export type PeersMatrix = {
   rows: PeersMatrixRow[];
 };
 
-type CellDraft = { id: string; bytes: bigint };
+type CellDraft = { id: string; rx: bigint; tx: bigint };
 
 export function buildPeersTrafficMatrix(
   servers: PeersMatrixServer[],
@@ -39,7 +39,7 @@ export function buildPeersTrafficMatrix(
     }
 
     const totals = traffic.get(peer.id) ?? { rx: 0n, tx: 0n };
-    byServer.set(peer.serverId, { id: peer.id, bytes: totals.rx + totals.tx });
+    byServer.set(peer.serverId, { id: peer.id, rx: totals.rx, tx: totals.tx });
     byName.set(name, byServer);
   }
 
@@ -49,7 +49,7 @@ export function buildPeersTrafficMatrix(
       name,
       cells: servers.map((server) => {
         const cell = byServer.get(server.id);
-        return cell ? { peerId: cell.id, bytes: cell.bytes } : null;
+        return cell ? { peerId: cell.id, rx: cell.rx, tx: cell.tx } : null;
       }),
     }));
 

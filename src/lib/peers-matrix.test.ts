@@ -30,10 +30,8 @@ test("same name on two servers is one row with values in separate columns", () =
     matrix.rows.map((row) => row.name),
     ["Иван"],
   );
-  assert.equal(matrix.rows[0]?.cells[0]?.peerId, "p-de");
-  assert.equal(matrix.rows[0]?.cells[0]?.bytes, 30n);
-  assert.equal(matrix.rows[0]?.cells[1]?.peerId, "p-uk");
-  assert.equal(matrix.rows[0]?.cells[1]?.bytes, 150n);
+  assert.deepEqual(matrix.rows[0]?.cells[0], { peerId: "p-de", rx: 20n, tx: 10n });
+  assert.deepEqual(matrix.rows[0]?.cells[1], { peerId: "p-uk", rx: 100n, tx: 50n });
 });
 
 test("partial rename is two rows keyed by current names", () => {
@@ -54,10 +52,10 @@ test("partial rename is two rows keyed by current names", () => {
     matrix.rows.map((row) => row.name),
     ["Иван", "Пётр"],
   );
-  assert.equal(matrix.rows[0]?.cells[0]?.bytes, 4n);
+  assert.deepEqual(matrix.rows[0]?.cells[0], { peerId: "p-de", rx: 3n, tx: 1n });
   assert.equal(matrix.rows[0]?.cells[1], null);
   assert.equal(matrix.rows[1]?.cells[0], null);
-  assert.equal(matrix.rows[1]?.cells[1]?.bytes, 10n);
+  assert.deepEqual(matrix.rows[1]?.cells[1], { peerId: "p-uk", rx: 8n, tx: 2n });
 });
 
 test("missing peer on a server is a dash and zero traffic is zero bytes", () => {
@@ -65,7 +63,7 @@ test("missing peer on a server is a dash and zero traffic is zero bytes", () => 
   const matrix = buildPeersTrafficMatrix(servers, peers, traffic([]));
 
   assert.equal(matrix.rows[0]?.cells[0], null);
-  assert.deepEqual(matrix.rows[0]?.cells[1], { peerId: "p-uk", bytes: 0n });
+  assert.deepEqual(matrix.rows[0]?.cells[1], { peerId: "p-uk", rx: 0n, tx: 0n });
 });
 
 test("trims names and drops empty or whitespace-only vpnName", () => {
@@ -80,7 +78,7 @@ test("trims names and drops empty or whitespace-only vpnName", () => {
     matrix.rows.map((row) => row.name),
     ["Анна"],
   );
-  assert.equal(matrix.rows[0]?.cells[1]?.bytes, 2n);
+  assert.deepEqual(matrix.rows[0]?.cells[1], { peerId: "keep", rx: 1n, tx: 1n });
 });
 
 test("sorts peer rows with the same collator as servers", () => {
@@ -112,7 +110,7 @@ test("rebuilds every column when a server is added or removed", () => {
   const three = buildPeersTrafficMatrix(threeServers, peers, traffic([["p-nl", 4n, 1n]]));
   assert.equal(three.servers.length, 3);
   assert.equal(three.rows[0]?.cells.length, 3);
-  assert.equal(three.rows[0]?.cells[2]?.bytes, 5n);
+  assert.deepEqual(three.rows[0]?.cells[2], { peerId: "p-nl", rx: 4n, tx: 1n });
 
   const one = buildPeersTrafficMatrix([servers[1]!], peers, traffic([["p-uk", 1n, 0n]]));
   assert.equal(one.servers.length, 1);
@@ -125,7 +123,7 @@ test("server without peers still contributes a column of dashes", () => {
   const matrix = buildPeersTrafficMatrix(servers, peers, traffic([["p-uk", 1n, 0n]]));
   assert.equal(matrix.servers.length, 2);
   assert.equal(matrix.rows[0]?.cells[0], null);
-  assert.equal(matrix.rows[0]?.cells[1]?.bytes, 1n);
+  assert.deepEqual(matrix.rows[0]?.cells[1], { peerId: "p-uk", rx: 1n, tx: 0n });
 });
 
 test("same name on one server keeps the smaller peer id and does not throw", () => {
@@ -143,5 +141,5 @@ test("same name on one server keeps the smaller peer id and does not throw", () 
   );
 
   assert.equal(matrix.rows.length, 1);
-  assert.deepEqual(matrix.rows[0]?.cells[1], { peerId: "p-a", bytes: 4n });
+  assert.deepEqual(matrix.rows[0]?.cells[1], { peerId: "p-a", rx: 3n, tx: 1n });
 });

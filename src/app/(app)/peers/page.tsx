@@ -1,5 +1,5 @@
 import { PeersMatrixTable } from "@/components/peers/peers-matrix-table";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { listPeersTrafficMatrix } from "@/server/services/server.service";
 
 export const dynamic = "force-dynamic";
@@ -31,11 +31,7 @@ export default async function PeersPage() {
           </CardHeader>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <PeersMatrixTable matrix={matrix} />
-          </CardContent>
-        </Card>
+        <PeersMatrixTable matrix={matrix} />
       )}
     </main>
   );
