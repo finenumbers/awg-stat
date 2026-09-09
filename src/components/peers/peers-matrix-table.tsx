@@ -11,12 +11,35 @@ function cellLabel(serverName: string, cell: PeersMatrixCell): string {
   return `${serverName}, исходящий ${formatBytes(cell.rx)}, входящий ${formatBytes(cell.tx)}`;
 }
 
+function widestName(names: Iterable<string>, fallback = ""): string {
+  let widest = fallback;
+  for (const name of names) {
+    if (name.length > widest.length) {
+      widest = name;
+    }
+  }
+  return widest;
+}
+
+function WidthSizer({ label, className }: { label: string; className?: string }) {
+  return (
+    <span aria-hidden className={cn("block h-0 overflow-hidden whitespace-nowrap", className)}>
+      {label}
+    </span>
+  );
+}
+
 export function PeersMatrixTable({ matrix }: { matrix: PeersMatrix }) {
   const lastServerId = matrix.servers.at(-1)?.id;
+  const serverColumnLabel = widestName(matrix.servers.map((server) => server.name));
+  const peerColumnLabel = widestName(
+    matrix.rows.map((row) => row.name),
+    "Пир",
+  );
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-max caption-bottom border-separate border-spacing-0 text-sm">
+      <table className="w-max table-fixed caption-bottom border-separate border-spacing-0 text-sm">
         <caption className="sr-only">Трафик пиров за 30 дней</caption>
         <thead>
           <tr className="hover:bg-background">
@@ -27,6 +50,7 @@ export function PeersMatrixTable({ matrix }: { matrix: PeersMatrix }) {
                 HEAD_SHADOW,
               )}
             >
+              <WidthSizer label={peerColumnLabel} className="max-w-48 truncate" />
               Пир
             </th>
             {matrix.servers.map((server) => (
@@ -39,6 +63,7 @@ export function PeersMatrixTable({ matrix }: { matrix: PeersMatrix }) {
                   server.id === lastServerId ? HEAD_SHADOW_LAST : HEAD_SHADOW,
                 )}
               >
+                <WidthSizer label={serverColumnLabel} />
                 {server.name}
               </th>
             ))}
