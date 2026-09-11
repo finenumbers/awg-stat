@@ -15,6 +15,38 @@ export type PeersMatrix = {
   rows: PeersMatrixRow[];
 };
 
+export type PeersMatrixCellView = { peerId: string; rx: number; tx: number };
+
+export type PeersMatrixView = {
+  servers: PeersMatrixServer[];
+  rows: Array<{ name: string; cells: Array<PeersMatrixCellView | null> }>;
+};
+
+export function serializeDirection(totals: { rx: bigint; tx: bigint }): { rx: number; tx: number } {
+  return { rx: Number(totals.rx), tx: Number(totals.tx) };
+}
+
+export function serializePeersMatrix(matrix: PeersMatrix): PeersMatrixView {
+  return {
+    servers: matrix.servers,
+    rows: matrix.rows.map((row) => ({
+      name: row.name,
+      cells: row.cells.map((cell) => (cell ? { peerId: cell.peerId, ...serializeDirection(cell) } : null)),
+    })),
+  };
+}
+
+export function trafficMapForWindow<K extends string>(
+  totals: Map<string, Record<K, { rx: bigint; tx: bigint }>>,
+  windowId: K,
+): PeersMatrixTraffic {
+  const traffic: PeersMatrixTraffic = new Map();
+  for (const [peerId, windows] of totals) {
+    traffic.set(peerId, windows[windowId]);
+  }
+  return traffic;
+}
+
 type CellDraft = { id: string; rx: bigint; tx: bigint };
 
 export function buildPeersTrafficMatrix(

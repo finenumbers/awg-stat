@@ -1,13 +1,13 @@
 import Link from "next/link";
 
-import type { PeersMatrix, PeersMatrixCell } from "@/lib/peers-matrix";
+import type { PeersMatrixCellView, PeersMatrixView } from "@/lib/peers-matrix";
 import { RX_COLOR, TX_COLOR } from "@/lib/traffic-colors";
 import { cn, formatBytes } from "@/lib/utils";
 
 const HEAD_SHADOW = "shadow-[inset_-1px_-1px_0_0_hsl(var(--border))]";
 const HEAD_SHADOW_LAST = "shadow-[inset_0_-1px_0_0_hsl(var(--border))]";
 
-function cellLabel(serverName: string, cell: PeersMatrixCell): string {
+function cellLabel(serverName: string, cell: PeersMatrixCellView): string {
   return `${serverName}, исходящий ${formatBytes(cell.rx)}, входящий ${formatBytes(cell.tx)}`;
 }
 
@@ -29,7 +29,13 @@ function WidthSizer({ label, className }: { label: string; className?: string })
   );
 }
 
-export function PeersMatrixTable({ matrix }: { matrix: PeersMatrix }) {
+export function PeersMatrixTable({
+  matrix,
+  caption = "Трафик пиров за 30 дней",
+}: {
+  matrix: PeersMatrixView;
+  caption?: string;
+}) {
   const lastServerId = matrix.servers.at(-1)?.id;
   const serverColumnLabel = widestName(matrix.servers.map((server) => server.name));
   const peerColumnLabel = widestName(
@@ -40,7 +46,7 @@ export function PeersMatrixTable({ matrix }: { matrix: PeersMatrix }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-max table-fixed caption-bottom border-separate border-spacing-0 text-sm">
-        <caption className="sr-only">Трафик пиров за 30 дней</caption>
+        <caption className="sr-only">{caption}</caption>
         <thead>
           <tr className="hover:bg-background">
             <th

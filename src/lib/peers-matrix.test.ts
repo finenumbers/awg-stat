@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildPeersTrafficMatrix, type PeersMatrixPeer, type PeersMatrixServer } from "./peers-matrix";
+import {
+  buildPeersTrafficMatrix,
+  serializeDirection,
+  serializePeersMatrix,
+  trafficMapForWindow,
+  type PeersMatrixPeer,
+  type PeersMatrixServer,
+} from "./peers-matrix";
 
 const servers: PeersMatrixServer[] = [
   { id: "de", name: "Германия" },
@@ -142,4 +149,32 @@ test("same name on one server keeps the smaller peer id and does not throw", () 
 
   assert.equal(matrix.rows.length, 1);
   assert.deepEqual(matrix.rows[0]?.cells[1], { peerId: "p-a", rx: 3n, tx: 1n });
+});
+
+test("serializeDirection matches chart Number() totals", () => {
+  assert.deepEqual(serializeDirection({ rx: 12_345n, tx: 678n }), { rx: 12_345, tx: 678 });
+});
+
+test("matrix cell for a window equals that window's peer totals after serialize", () => {
+  const totals = new Map([
+    [
+      "p-de",
+      {
+        "30m": { rx: 10n, tx: 1n },
+        "24h": { rx: 100n, tx: 10n },
+        "30d": { rx: 1000n, tx: 100n },
+      },
+    ],
+  ]);
+  const peers: PeersMatrixPeer[] = [{ id: "p-de", name: "Иван", serverId: "de" }];
+
+  for (const windowId of ["30m", "24h", "30d"] as const) {
+    const matrix = serializePeersMatrix(
+      buildPeersTrafficMatrix(servers, peers, trafficMapForWindow(totals, windowId)),
+    );
+    assert.deepEqual(matrix.rows[0]?.cells[0], {
+      peerId: "p-de",
+      ...serializeDirection(totals.get("p-de")![windowId]),
+    });
+  }
 });

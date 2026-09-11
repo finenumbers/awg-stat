@@ -1,7 +1,12 @@
 import { Prisma, type AuthMethod } from "@prisma/client";
 
 import { db } from "@/lib/db";
-import { buildPeersTrafficMatrix, type PeersMatrix } from "@/lib/peers-matrix";
+import {
+  buildPeersTrafficMatrix,
+  serializeDirection,
+  trafficMapForWindow,
+  type PeersMatrix,
+} from "@/lib/peers-matrix";
 import { filterPointsSince } from "@/lib/traffic-points";
 import { comparePeerInternalIp, compareServerName } from "@/lib/utils";
 import type { SshAuthInput } from "@/lib/validations/identity";
@@ -372,7 +377,9 @@ export async function serversTraffic30d(serverIds: string[], now = Date.now()) {
   return totals;
 }
 
-export async function listPeersTrafficMatrix(now = Date.now()): Promise<PeersMatrix> {
+export async function listPeersTrafficMatrix(
+  now = Date.now(),
+): Promise<Record<TrafficWindowId, PeersMatrix>> {
   const [servers, peers] = await Promise.all([
     listServerNavItems(),
     db.peer.findMany({
@@ -391,27 +398,16 @@ export async function listPeersTrafficMatrix(now = Date.now()): Promise<PeersMat
     serverId: peer.vpnInstance.serverId,
   }));
   const namedIds = mapped.filter((peer) => peer.name.trim()).map((peer) => peer.id);
-  const traffic = new Map<string, TrafficDirectionTotals>();
+  const totals = await peersTrafficTotals(namedIds, now);
 
-  if (namedIds.length > 0) {
-    const hourlyRows = await db.peerHourlySample.groupBy({
-      by: ["peerId"],
-      where: { peerId: { in: namedIds }, hourStart: { gte: peerHourlySince(now) } },
-      _sum: { rxDelta: true, txDelta: true },
-    });
-    for (const row of hourlyRows) {
-      traffic.set(row.peerId, {
-        rx: row._sum.rxDelta ?? 0n,
-        tx: row._sum.txDelta ?? 0n,
-      });
-    }
-  }
-
-  return buildPeersTrafficMatrix(servers, mapped, traffic);
+  return {
+    "30m": buildPeersTrafficMatrix(servers, mapped, trafficMapForWindow(totals, "30m")),
+    "24h": buildPeersTrafficMatrix(servers, mapped, trafficMapForWindow(totals, "24h")),
+    "30d": buildPeersTrafficMatrix(servers, mapped, trafficMapForWindow(totals, "30d")),
+  };
 }
 
-export async function peersTrafficTotals(peerIds: string[]) {
-  const now = Date.now();
+export async function peersTrafficTotals(peerIds: string[], now = Date.now()) {
   const totals = new Map<string, PeerTrafficTotals>();
   for (const peerId of peerIds) {
     totals.set(peerId, {
@@ -474,11 +470,10 @@ export async function peersTrafficTotals(peerIds: string[]) {
 
 export async function peerTrafficWindows(peerId: string): Promise<TrafficWindowsView> {
   const now = Date.now();
-  const since30m = now - MS_30M;
   const since24 = new Date(now - MS_24H);
   const since30 = new Date(now - MS_30D);
 
-  const [raw24, hourly, hourlyTotals] = await Promise.all([
+  const [raw24, hourly, totalsByPeer] = await Promise.all([
     db.peerSample.findMany({
       where: { peerId, capturedAt: { gte: since24 } },
       orderBy: { capturedAt: "asc" },
@@ -489,14 +484,16 @@ export async function peerTrafficWindows(peerId: string): Promise<TrafficWindows
       orderBy: { hourStart: "asc" },
       select: { hourStart: true, rxDelta: true, txDelta: true },
     }),
-    db.peerHourlySample.aggregate({
-      where: { peerId, hourStart: { gte: since30 } },
-      _sum: { rxDelta: true, txDelta: true },
-    }),
+    peersTrafficTotals([peerId], now),
   ]);
 
+  const totals = totalsByPeer.get(peerId) ?? {
+    "30m": emptyDirectionTotals(),
+    "24h": emptyDirectionTotals(),
+    "30d": emptyDirectionTotals(),
+  };
   const points24raw = raw24.map((sample) => toPoint(sample.capturedAt, sample.rxDelta, sample.txDelta));
-  const points30m = filterPointsSince(points24raw, since30m);
+  const points30m = filterPointsSince(points24raw, now - MS_30M);
   const hourlyPoints = hourly.map((row) => ({
     t: row.hourStart.getTime(),
     rx: Number(row.rxDelta),
@@ -504,13 +501,10 @@ export async function peerTrafficWindows(peerId: string): Promise<TrafficWindows
   }));
 
   return {
-    "30m": { totals: sumPoints(points30m), points: points30m },
-    "24h": { totals: sumPoints(points24raw), points: bucketMinutes(points24raw, now - MS_24H, now) },
+    "30m": { totals: serializeDirection(totals["30m"]), points: points30m },
+    "24h": { totals: serializeDirection(totals["24h"]), points: bucketMinutes(points24raw, now - MS_24H, now) },
     "30d": {
-      totals: {
-        rx: Number(hourlyTotals._sum.rxDelta ?? 0n),
-        tx: Number(hourlyTotals._sum.txDelta ?? 0n),
-      },
+      totals: serializeDirection(totals["30d"]),
       points: fillHours(hourlyPoints, now - MS_30D, now),
     },
   };
