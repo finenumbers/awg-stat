@@ -22,6 +22,7 @@ import {
   formatRelativeHandshake,
   formatUptime,
 } from "@/lib/utils";
+import { parseSparkline } from "@/lib/sparkline";
 import { getServerDetail, peersTrafficTotals, serverTrafficWindows } from "@/server/services/server.service";
 
 export const dynamic = "force-dynamic";
@@ -76,15 +77,14 @@ export default async function ServerPage({
 
   const peers = server.vpnInstance?.peers ?? [];
   const peerRows = peers.map((peer) => {
-    const sample = peer.samples[0];
     const status = peerPresence({
       status: peer.status,
-      capturedAt: sample?.capturedAt,
-      handshakeUnix: sample?.handshakeUnix,
-      rxDelta: sample?.rxDelta,
-      txDelta: sample?.txDelta,
+      capturedAt: peer.lastCapturedAt,
+      handshakeUnix: peer.lastHandshakeUnix,
+      rxDelta: peer.lastRxDelta,
+      txDelta: peer.lastTxDelta,
     });
-    return { peer, sample, status };
+    return { peer, status };
   });
   const visibleRows = activeOnly ? peerRows.filter((row) => row.status.kind === "online") : peerRows;
   const [byPeer, windows] = await Promise.all([
@@ -176,12 +176,12 @@ export default async function ServerPage({
             <p className="text-sm text-muted-foreground">Нет активных пиров.</p>
           ) : (
             <ul className="divide-y">
-              {visibleRows.map(({ peer, sample, status }) => {
+              {visibleRows.map(({ peer, status }) => {
                 const peerTraffic = byPeer.get(peer.id);
                 const window30m = peerTraffic?.["30m"] ?? { rx: 0n, tx: 0n };
                 const window24h = peerTraffic?.["24h"] ?? { rx: 0n, tx: 0n };
                 const window30d = peerTraffic?.["30d"] ?? { rx: 0n, tx: 0n };
-                const spark = [...peer.samples].reverse().map((item) => Number(item.rxDelta + item.txDelta));
+                const spark = parseSparkline(peer.sparkline);
                 const endpointLine = peerEndpointHostLine(peer.endpoint, {
                   countryName: peer.endpointCountryName,
                   cityName: peer.endpointCityName,
@@ -197,7 +197,12 @@ export default async function ServerPage({
                             <span className={`rounded-full px-2 py-0.5 text-xs ${statusTone(status.tone)}`}>{status.label}</span>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            Handshake: {sample ? formatRelativeHandshake(sample.handshakeUnix, Math.floor(sample.capturedAt.getTime() / 1000)) : "—"}
+                            Handshake: {peer.lastCapturedAt
+                              ? formatRelativeHandshake(
+                                  peer.lastHandshakeUnix ?? 0n,
+                                  Math.floor(peer.lastCapturedAt.getTime() / 1000),
+                                )
+                              : "—"}
                             {peer.allowedIps ? ` · ${peer.allowedIps}` : ""}
                             {endpointLine ? ` · ${endpointLine}` : ""}
                           </p>

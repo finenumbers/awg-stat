@@ -22,7 +22,8 @@ import { withDeadline, withSshConnection, type SshClient, type SshConnectionConf
 import { canCommitPoll, shouldRetrySshPoll } from "@/lib/ssh/errors";
 import { getSshSessionRegistry } from "@/lib/ssh/session-registry";
 import { isPeerOnline, presenceTransition, previousPresenceOnline } from "@/lib/presence";
-import { POLL_DEADLINE_MS, POLL_INTERVAL_SEC, RAW_RETENTION_DAYS } from "@/server/poll-defaults";
+import { pushSparkline, sparklinePoint } from "@/lib/sparkline";
+import { POLL_DEADLINE_MS, POLL_INTERVAL_SEC, presenceCutoff, rawSampleCutoff } from "@/server/poll-defaults";
 import { getPollerEpoch, isPollerStopping } from "@/server/poller-runtime";
 import { displayPeerEndpoint } from "@/lib/utils";
 import { getServerSecret } from "@/server/services/identity.service";
@@ -366,18 +367,14 @@ async function persistPollUnlocked(
       endpointCountryName: true,
       endpointCityName: true,
       endpointOrganization: true,
+      lastRxBytes: true,
+      lastTxBytes: true,
+      lastOnline: true,
+      sparkline: true,
     },
   });
   const existingByKey = new Map(existing.map((peer) => [peer.publicKey, peer]));
   const peerIds = existing.map((peer) => peer.id);
-  const lastSamples = existing.length
-    ? await db.peerSample.findMany({
-        where: { peerId: { in: peerIds } },
-        orderBy: { capturedAt: "desc" },
-        distinct: ["peerId"],
-        select: { peerId: true, rxBytes: true, txBytes: true, online: true },
-      })
-    : [];
   const lastEvents = existing.length
     ? await db.peerPresenceEvent.findMany({
         where: { peerId: { in: peerIds } },
@@ -386,7 +383,6 @@ async function persistPollUnlocked(
         select: { id: true, peerId: true, kind: true, endpoint: true },
       })
     : [];
-  const lastByPeerId = new Map(lastSamples.map((sample) => [sample.peerId, sample]));
   const lastEventByPeerId = new Map(lastEvents.map((event) => [event.peerId, event]));
   const seen = new Set<string>();
 
@@ -397,11 +393,10 @@ async function persistPollUnlocked(
   for (const remote of parsed.peers) {
     seen.add(remote.publicKey);
     const prev = existingByKey.get(remote.publicKey);
-    const lastSample = prev ? lastByPeerId.get(prev.id) ?? null : null;
     const lastEvent = prev ? lastEventByPeerId.get(prev.id) ?? null : null;
 
-    const rxDelta = computeDelta(remote.rxBytes, lastSample?.rxBytes ?? null);
-    const txDelta = computeDelta(remote.txBytes, lastSample?.txBytes ?? null);
+    const rxDelta = computeDelta(remote.rxBytes, prev?.lastRxBytes ?? null);
+    const txDelta = computeDelta(remote.txBytes, prev?.lastTxBytes ?? null);
     const online = isPeerOnline({
       capturedAt: now,
       handshakeUnix: remote.handshakeUnix,
@@ -412,7 +407,7 @@ async function persistPollUnlocked(
       online,
       previousOnline: previousPresenceOnline({
         lastEventKind: lastEvent?.kind,
-        lastSampleOnline: lastSample?.online,
+        lastSampleOnline: prev?.lastOnline,
       }),
     });
 
@@ -462,6 +457,19 @@ async function persistPollUnlocked(
           online,
         },
       }),
+      db.peer.update({
+        where: { id: peer.id },
+        data: {
+          lastCapturedAt: now,
+          lastRxBytes: remote.rxBytes,
+          lastTxBytes: remote.txBytes,
+          lastRxDelta: rxDelta,
+          lastTxDelta: txDelta,
+          lastHandshakeUnix: remote.handshakeUnix,
+          lastOnline: online,
+          sparkline: pushSparkline(prev?.sparkline, sparklinePoint(rxDelta, txDelta)),
+        },
+      }),
       ...(kind
         ? [
             db.peerPresenceEvent.create({
@@ -506,19 +514,18 @@ async function persistPollUnlocked(
 
   const vanished = existing.filter((peer) => peer.status === "ACTIVE" && !seen.has(peer.publicKey));
   for (const peer of vanished) {
-    const lastSample = lastByPeerId.get(peer.id) ?? null;
     const lastEvent = lastEventByPeerId.get(peer.id) ?? null;
     const kind = presenceTransition({
       online: false,
       previousOnline: previousPresenceOnline({
         lastEventKind: lastEvent?.kind,
-        lastSampleOnline: lastSample?.online,
+        lastSampleOnline: peer.lastOnline,
       }),
     });
     await db.$transaction([
       db.peer.update({
         where: { id: peer.id },
-        data: { status: "REMOVED", removedAt: now },
+        data: { status: "REMOVED", removedAt: now, lastOnline: false },
       }),
       ...(kind
         ? [
@@ -553,12 +560,21 @@ async function persistPollUnlocked(
 
 export async function pruneOldSamples() {
   const settings = await ensureAppSettings();
-  const rawCutoff = new Date(Date.now() - RAW_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const sampleCutoff = rawSampleCutoff();
+  const journalCutoff = presenceCutoff();
   const hourlyCutoff = new Date(Date.now() - settings.hourlyRetentionDays * 24 * 60 * 60 * 1000);
-  await db.peerSample.deleteMany({ where: { capturedAt: { lt: rawCutoff } } });
-  await db.serverSample.deleteMany({ where: { capturedAt: { lt: rawCutoff } } });
-  await db.peerPresenceEvent.deleteMany({ where: { occurredAt: { lt: rawCutoff } } });
+  const [peers, servers] = await Promise.all([
+    db.peer.findMany({ select: { id: true } }),
+    db.server.findMany({ select: { id: true } }),
+  ]);
+  for (const peer of peers) {
+    await db.peerSample.deleteMany({ where: { peerId: peer.id, capturedAt: { lt: sampleCutoff } } });
+  }
+  for (const server of servers) {
+    await db.serverSample.deleteMany({ where: { serverId: server.id, capturedAt: { lt: sampleCutoff } } });
+  }
+  await db.peerPresenceEvent.deleteMany({ where: { occurredAt: { lt: journalCutoff } } });
   await db.peerHourlySample.deleteMany({ where: { hourStart: { lt: hourlyCutoff } } });
-  await db.ipGeoCache.deleteMany({ where: { lookedUpAt: { lt: rawCutoff } } });
+  await db.ipGeoCache.deleteMany({ where: { lookedUpAt: { lt: journalCutoff } } });
 }
 

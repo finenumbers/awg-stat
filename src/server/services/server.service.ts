@@ -11,7 +11,7 @@ import { filterPointsSince } from "@/lib/traffic-points";
 import { comparePeerInternalIp, compareServerName } from "@/lib/utils";
 import type { SshAuthInput } from "@/lib/validations/identity";
 import type { ServerInput } from "@/lib/validations/server";
-import { RAW_RETENTION_DAYS, SPARKLINE_SAMPLES } from "@/server/poll-defaults";
+import { presenceCutoff } from "@/server/poll-defaults";
 import { releaseServerRuntime } from "@/server/poller-queues";
 import { createAuditEvent } from "@/server/services/audit.service";
 import { CollectorError, onboardExistingServer } from "@/server/services/collector.service";
@@ -119,15 +119,7 @@ export async function getServerDetail(id: string) {
     include: {
       vpnInstance: {
         include: {
-          peers: {
-            include: {
-              samples: {
-                orderBy: { capturedAt: "desc" },
-                take: SPARKLINE_SAMPLES,
-                select: { capturedAt: true, handshakeUnix: true, rxDelta: true, txDelta: true },
-              },
-            },
-          },
+          peers: true,
         },
       },
       serverSamples: {
@@ -152,7 +144,7 @@ export async function getServerDetail(id: string) {
 const PRESENCE_EVENTS_TAKE = 100;
 
 export async function listPeerPresenceEvents(peerId: string) {
-  const since = new Date(Date.now() - RAW_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const since = presenceCutoff();
   const where = { peerId, occurredAt: { gte: since } };
   const [items, total] = await Promise.all([
     db.peerPresenceEvent.findMany({
@@ -170,7 +162,6 @@ export async function getPeerDetail(serverId: string, peerId: string) {
     where: { id: peerId, vpnInstance: { serverId } },
     include: {
       vpnInstance: { include: { server: true } },
-      samples: { orderBy: { capturedAt: "desc" }, take: 1 },
     },
   });
   return peer;
@@ -420,17 +411,21 @@ export async function peersTrafficTotals(peerIds: string[], now = Date.now()) {
     return totals;
   }
 
-  const [rows30m, rows24h, rows30d] = await Promise.all([
-    db.peerSample.groupBy({
-      by: ["peerId"],
-      where: { peerId: { in: peerIds }, capturedAt: { gte: new Date(now - MS_30M) } },
-      _sum: { rxDelta: true, txDelta: true },
-    }),
-    db.peerSample.groupBy({
-      by: ["peerId"],
-      where: { peerId: { in: peerIds }, capturedAt: { gte: new Date(now - MS_24H) } },
-      _sum: { rxDelta: true, txDelta: true },
-    }),
+  const since30m = new Date(now - MS_30M);
+  const since24h = new Date(now - MS_24H);
+  const [rawWindows, rows30d] = await Promise.all([
+    db.$queryRaw<Array<{ peerId: string; rx30m: bigint; tx30m: bigint; rx24h: bigint; tx24h: bigint }>>`
+      SELECT
+        "peerId",
+        COALESCE(SUM("rxDelta") FILTER (WHERE "capturedAt" >= ${since30m}), 0)::bigint AS "rx30m",
+        COALESCE(SUM("txDelta") FILTER (WHERE "capturedAt" >= ${since30m}), 0)::bigint AS "tx30m",
+        COALESCE(SUM("rxDelta"), 0)::bigint AS "rx24h",
+        COALESCE(SUM("txDelta"), 0)::bigint AS "tx24h"
+      FROM "peer_sample"
+      WHERE "peerId" IN (${Prisma.join(peerIds)})
+        AND "capturedAt" >= ${since24h}
+      GROUP BY "peerId"
+    `,
     db.peerHourlySample.groupBy({
       by: ["peerId"],
       where: { peerId: { in: peerIds }, hourStart: { gte: peerHourlySince(now) } },
@@ -438,22 +433,11 @@ export async function peersTrafficTotals(peerIds: string[], now = Date.now()) {
     }),
   ]);
 
-  for (const row of rows30m) {
+  for (const row of rawWindows) {
     const current = totals.get(row.peerId);
     if (current) {
-      current["30m"] = {
-        rx: row._sum.rxDelta ?? 0n,
-        tx: row._sum.txDelta ?? 0n,
-      };
-    }
-  }
-  for (const row of rows24h) {
-    const current = totals.get(row.peerId);
-    if (current) {
-      current["24h"] = {
-        rx: row._sum.rxDelta ?? 0n,
-        tx: row._sum.txDelta ?? 0n,
-      };
+      current["30m"] = { rx: row.rx30m, tx: row.tx30m };
+      current["24h"] = { rx: row.rx24h, tx: row.tx24h };
     }
   }
   for (const row of rows30d) {
@@ -516,12 +500,22 @@ export async function serverTrafficWindows(serverId: string): Promise<TrafficWin
   const since24 = new Date(now - MS_24H);
   const since30 = peerHourlySince(now);
 
-  const [raw24, hourly, totals30dByServer] = await Promise.all([
+  const [raw30m, minute24, hourly, totals30dByServer] = await Promise.all([
     db.serverSample.findMany({
-      where: { serverId, capturedAt: { gte: since24 } },
+      where: { serverId, capturedAt: { gte: new Date(since30m) } },
       orderBy: { capturedAt: "asc" },
       select: { capturedAt: true, rxDelta: true, txDelta: true },
     }),
+    db.$queryRaw<Array<{ t: bigint; rx: bigint; tx: bigint }>>`
+      SELECT
+        (FLOOR(EXTRACT(EPOCH FROM "capturedAt") / 60) * 60)::bigint * 1000 AS t,
+        COALESCE(SUM("rxDelta"), 0)::bigint AS rx,
+        COALESCE(SUM("txDelta"), 0)::bigint AS tx
+      FROM "server_sample"
+      WHERE "serverId" = ${serverId} AND "capturedAt" >= ${since24}
+      GROUP BY 1
+      ORDER BY 1
+    `,
     db.peerHourlySample.groupBy({
       by: ["hourStart"],
       where: {
@@ -534,8 +528,13 @@ export async function serverTrafficWindows(serverId: string): Promise<TrafficWin
     serversTraffic30d([serverId], now),
   ]);
 
-  const points24raw = raw24.map((sample) => toPoint(sample.capturedAt, sample.rxDelta, sample.txDelta));
-  const points30m = filterPointsSince(points24raw, since30m);
+  const points30m = raw30m.map((sample) => toPoint(sample.capturedAt, sample.rxDelta, sample.txDelta));
+  const minutePoints = minute24.map((row) => ({
+    t: Number(row.t),
+    rx: Number(row.rx),
+    tx: Number(row.tx),
+  }));
+  const points24 = bucketMinutes(minutePoints, now - MS_24H, now);
   const hourlyPoints = hourly.map((row) => ({
     t: row.hourStart.getTime(),
     rx: Number(row._sum.rxDelta ?? 0n),
@@ -545,7 +544,7 @@ export async function serverTrafficWindows(serverId: string): Promise<TrafficWin
 
   return {
     "30m": { totals: sumPoints(points30m), points: points30m },
-    "24h": { totals: sumPoints(points24raw), points: bucketMinutes(points24raw, now - MS_24H, now) },
+    "24h": { totals: sumPoints(points24), points: points24 },
     "30d": {
       totals: {
         rx: Number(hourlyTotals.rx),

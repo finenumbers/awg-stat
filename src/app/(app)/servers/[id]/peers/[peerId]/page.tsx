@@ -37,7 +37,14 @@ export default async function PeerPage({
     peerTrafficWindows(peer.id),
     listPeerPresenceEvents(peer.id),
   ]);
-  const latest = peer.samples[0];
+  const latest = peer.lastCapturedAt
+    ? {
+        capturedAt: peer.lastCapturedAt,
+        handshakeUnix: peer.lastHandshakeUnix ?? 0n,
+        rxDelta: peer.lastRxDelta,
+        txDelta: peer.lastTxDelta,
+      }
+    : null;
   const name = displayPeerName(peer.vpnName, peer.publicKey);
   const internalIp = displayPeerInternalIp(peer.allowedIps);
   const presence = peerPresence({

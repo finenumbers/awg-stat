@@ -209,6 +209,14 @@ model Peer {
   firstSeenAt   DateTime   @default(now())
   lastSeenAt    DateTime?
   removedAt     DateTime?
+  lastCapturedAt         DateTime?
+  lastRxBytes            BigInt?
+  lastTxBytes            BigInt?
+  lastRxDelta            BigInt?
+  lastTxDelta            BigInt?
+  lastHandshakeUnix      BigInt?
+  lastOnline             Boolean?
+  sparkline              Json?
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 

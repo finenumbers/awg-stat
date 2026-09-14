@@ -15,7 +15,7 @@ import {
   type EndpointGeo,
   type GeoipLookupResult,
 } from "@/lib/geoip";
-import { RAW_RETENTION_DAYS } from "@/server/poll-defaults";
+import { presenceCutoff } from "@/server/poll-defaults";
 import { db } from "@/lib/db";
 
 const inflight = new Map<string, Promise<EndpointGeo | null>>();
@@ -274,7 +274,7 @@ export async function enrichServerPeerEndpoints(serverId: string): Promise<void>
   }
 
   try {
-    const since = new Date(Date.now() - RAW_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const since = presenceCutoff();
     const [peers, events] = await Promise.all([
       db.peer.findMany({
         where: { vpnInstance: { serverId } },

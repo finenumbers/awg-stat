@@ -23,12 +23,14 @@ RUN npx esbuild src/worker/main.ts --bundle --platform=node --outfile=dist/polle
 FROM base AS migrator
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends openssl ca-certificates postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY prisma ./prisma
-CMD ["npx", "prisma", "migrate", "deploy"]
+COPY docker/migrate-entrypoint.sh /migrate-entrypoint.sh
+RUN chmod +x /migrate-entrypoint.sh
+ENTRYPOINT ["/migrate-entrypoint.sh"]
 
 FROM base AS runner
 WORKDIR /app
