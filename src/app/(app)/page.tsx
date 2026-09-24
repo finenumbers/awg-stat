@@ -10,7 +10,8 @@ import { ServerIcmpHint } from "@/components/servers/server-icmp-hint";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { freshIcmpLabel } from "@/lib/latency";
 import { serverPollBadge } from "@/lib/presence";
-import { activeAwgVersionLabel, formatBytes, formatDbSizeGb, formatInteger } from "@/lib/utils";
+import { overviewCardChrome } from "@/lib/server-card";
+import { activeAwgVersionLabel, cn, formatBytes, formatDbSizeGb, formatInteger } from "@/lib/utils";
 import { getDatabaseSizeBytes } from "@/server/services/database.service";
 import { listServers, serversTraffic24h, serversTraffic30d } from "@/server/services/server.service";
 
@@ -141,12 +142,16 @@ export default async function OverviewPage() {
                 : 0;
             const pollBadge = overviewPollBadge(server);
             const icmpLabel = freshIcmpLabel(server.lastIcmpRttMs, server.lastIcmpAt);
+            const cardChrome = overviewCardChrome({
+              icmpLabel,
+              blockStatus: server.lastBlockStatus,
+            });
             const window30m = sumSampleDeltas(server.serverSamples);
             const window24h = traffic24h.get(server.id) ?? { rx: 0n, tx: 0n };
             const window30d = traffic30d.get(server.id) ?? { rx: 0n, tx: 0n };
 
             return (
-              <Card key={server.id} className="relative h-full transition-colors hover:bg-accent/40">
+              <Card key={server.id} className={cn("relative h-full transition-colors", cardChrome)}>
                 <Link
                   href={`/servers/${server.id}`}
                   className="absolute inset-0 z-0"
