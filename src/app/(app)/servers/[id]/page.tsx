@@ -11,6 +11,7 @@ import { ServerIcmpHint } from "@/components/servers/server-icmp-hint";
 import { DeleteServerDialog } from "@/components/servers/delete-server-dialog";
 import { ServerSettingsDialog } from "@/components/servers/server-settings-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { blockCheckBadge } from "@/lib/block-check/label";
 import { freshIcmpLabel } from "@/lib/latency";
 import { peerPresence, serverPollBadge } from "@/lib/presence";
 import {
@@ -118,12 +119,17 @@ export default async function ServerPage({
               <span className={`rounded-full px-2 py-0.5 text-xs ${statusTone(pollBadge.tone)}`}>
                 {pollBadge.label}
               </span>
+              {blockCheckBadge(server.lastBlockStatus) ? (
+                <>
+                  <span className="text-xs text-muted-foreground">/</span>
+                  <ServerBlockHint
+                    status={server.lastBlockStatus}
+                    host={server.host}
+                    checkedAt={server.lastBlockCheckedAt}
+                  />
+                </>
+              ) : null}
               <ServerIcmpHint label={icmpLabel} />
-              <ServerBlockHint
-                status={server.lastBlockStatus}
-                host={server.host}
-                checkedAt={server.lastBlockCheckedAt}
-              />
             </div>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">

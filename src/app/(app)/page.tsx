@@ -8,6 +8,7 @@ import { DeletionNotice } from "@/components/servers/deletion-notice";
 import { ServerBlockHint } from "@/components/servers/server-block-hint";
 import { ServerIcmpHint } from "@/components/servers/server-icmp-hint";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { blockCheckBadge } from "@/lib/block-check/label";
 import { freshIcmpLabel } from "@/lib/latency";
 import { serverPollBadge } from "@/lib/presence";
 import { overviewCardChrome } from "@/lib/server-card";
@@ -165,23 +166,28 @@ export default async function OverviewPage() {
                         <CardDescription>{server.host}</CardDescription>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs ${
-                            pollBadge.tone === "ok"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-amber-100 text-amber-900"
-                          }`}
-                        >
-                          {pollBadge.label}
-                        </span>
-                        <ServerIcmpHint label={icmpLabel} />
-                        <div className="pointer-events-auto">
-                          <ServerBlockHint
-                            status={server.lastBlockStatus}
-                            host={server.host}
-                            checkedAt={server.lastBlockCheckedAt}
-                          />
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs ${
+                              pollBadge.tone === "ok"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-amber-100 text-amber-900"
+                            }`}
+                          >
+                            {pollBadge.label}
+                          </span>
+                          {blockCheckBadge(server.lastBlockStatus) ? (
+                            <>
+                              <span className="text-xs text-muted-foreground">/</span>
+                              <ServerBlockHint
+                                status={server.lastBlockStatus}
+                                host={server.host}
+                                checkedAt={server.lastBlockCheckedAt}
+                              />
+                            </>
+                          ) : null}
                         </div>
+                        <ServerIcmpHint label={icmpLabel} />
                       </div>
                     </div>
                   </CardHeader>

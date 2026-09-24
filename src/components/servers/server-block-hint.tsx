@@ -26,8 +26,8 @@ export function ServerBlockHint({
       title={title}
       className={
         badge === "blocked"
-          ? "rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700"
-          : "rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800"
+          ? "pointer-events-auto rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700"
+          : "pointer-events-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800"
       }
     >
       {label}
