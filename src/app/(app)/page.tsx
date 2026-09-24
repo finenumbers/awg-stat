@@ -5,6 +5,7 @@ import { InfoblockBody, INFOBLOCK_CHROME } from "@/components/charts/infoblock";
 import { Sparkline } from "@/components/charts/traffic-chart";
 import { WindowTrafficValues } from "@/components/charts/window-traffic";
 import { DeletionNotice } from "@/components/servers/deletion-notice";
+import { ServerBlockHint } from "@/components/servers/server-block-hint";
 import { ServerIcmpHint } from "@/components/servers/server-icmp-hint";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { freshIcmpLabel } from "@/lib/latency";
@@ -145,8 +146,13 @@ export default async function OverviewPage() {
             const window30d = traffic30d.get(server.id) ?? { rx: 0n, tx: 0n };
 
             return (
-              <Link key={server.id} href={`/servers/${server.id}`}>
-                <Card className="h-full transition-colors hover:bg-accent/40">
+              <Card key={server.id} className="relative h-full transition-colors hover:bg-accent/40">
+                <Link
+                  href={`/servers/${server.id}`}
+                  className="absolute inset-0 z-0"
+                  aria-label={server.name}
+                />
+                <div className="pointer-events-none relative z-10">
                   <CardHeader className="pb-2.5">
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -164,6 +170,13 @@ export default async function OverviewPage() {
                           {pollBadge.label}
                         </span>
                         <ServerIcmpHint label={icmpLabel} />
+                        <div className="pointer-events-auto">
+                          <ServerBlockHint
+                            status={server.lastBlockStatus}
+                            host={server.host}
+                            checkedAt={server.lastBlockCheckedAt}
+                          />
+                        </div>
                       </div>
                     </div>
                   </CardHeader>
@@ -222,8 +235,8 @@ export default async function OverviewPage() {
                       <Sparkline values={spark} />
                     </div>
                   </CardContent>
-                </Card>
-              </Link>
+                </div>
+              </Card>
             );
             })}
           </div>

@@ -6,6 +6,7 @@ import { Sparkline } from "@/components/charts/traffic-chart";
 import { TrafficWindows } from "@/components/charts/traffic-windows";
 import { WindowTrafficValues } from "@/components/charts/window-traffic";
 import { ActivePeersToggle } from "@/components/servers/active-peers-toggle";
+import { ServerBlockHint } from "@/components/servers/server-block-hint";
 import { ServerIcmpHint } from "@/components/servers/server-icmp-hint";
 import { DeleteServerDialog } from "@/components/servers/delete-server-dialog";
 import { ServerSettingsDialog } from "@/components/servers/server-settings-dialog";
@@ -118,6 +119,11 @@ export default async function ServerPage({
                 {pollBadge.label}
               </span>
               <ServerIcmpHint label={icmpLabel} />
+              <ServerBlockHint
+                status={server.lastBlockStatus}
+                host={server.host}
+                checkedAt={server.lastBlockCheckedAt}
+              />
             </div>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">

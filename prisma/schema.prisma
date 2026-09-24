@@ -115,6 +115,11 @@ enum AuditAction {
   POLL_FAILED
 }
 
+enum BlockCheckStatus {
+  unrestricted
+  blocked
+}
+
 model PollerLease {
   id        String   @id @default("default")
   ownerId   String?  @map("owner_id")
@@ -146,6 +151,8 @@ model Server {
   lastPollError         String?
   lastIcmpRttMs         Int?
   lastIcmpAt            DateTime?
+  lastBlockStatus       BlockCheckStatus?
+  lastBlockCheckedAt    DateTime?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 

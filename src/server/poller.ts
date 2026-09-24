@@ -4,6 +4,7 @@ import { POLL_DEADLINE_MS, POLL_INTERVAL_SEC, POLLER_LEASE_TTL_SEC } from "@/ser
 import { isServerPollDue } from "@/server/poll-due";
 import { clearAllQueues, pruneQueues, queueFor } from "@/server/poller-queues";
 import { getPollerEpoch, getPollerState, pollerRuntime } from "@/server/poller-runtime";
+import { ensureBlockCheckRefresh, stopBlockCheckRefresh } from "@/server/services/block-check.service";
 import { pollServer, pruneOldSamples } from "@/server/services/collector.service";
 import { warnIfGeoipDisabled } from "@/server/services/geoip.service";
 import { ensureAppSettings } from "@/server/services/setup.service";
@@ -124,6 +125,8 @@ async function tick() {
   if (Math.floor(now / 1000) % 3600 < POLL_INTERVAL_SEC + 5) {
     await pruneOldSamples();
   }
+
+  void ensureBlockCheckRefresh(now);
 }
 
 export async function startPoller() {
@@ -155,6 +158,7 @@ export async function stopPoller() {
     clearInterval(pollerRuntime.timer);
     pollerRuntime.timer = null;
   }
+  await stopBlockCheckRefresh();
   getSshSessionRegistry().closeAll();
   clearAllQueues();
   pollerRuntime.started = false;

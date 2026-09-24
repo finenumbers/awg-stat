@@ -82,6 +82,7 @@ services:
       NODE_ENV: production
       GEOIP_API_URL: ${GEOIP_API_URL:-}
       GEOIP_API_KEY: ${GEOIP_API_KEY:-}
+      GATE_BLOCK_CHECK: ${GATE_BLOCK_CHECK:-}
     healthcheck:
       test: ["CMD", "node", "/app/poller-health.cjs"]
       interval: 30s
