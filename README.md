@@ -9,6 +9,7 @@
 ## Что делает
 
 - Подключается по SSH к Debian-серверу, где уже работает контейнер `amnezia-awg2`
+- На том же Docker-хосте читает уже запущенный `amnezia-awg2` без SSH: служебный контейнер `gate-docker-agent` смотрит только этот контейнер и только скрипт чтения `awg show`
 - Читает несекретные селекторы `awg show all` и файл `/opt/amnezia/awg/clientsTable`
 - Хранит историю трафика в своей PostgreSQL
 - Показывает имена пиров из `clientsTable` на VPN
@@ -21,8 +22,9 @@
 - [`ghcr.io/finenumbers/awg-stat:latest`](https://github.com/finenumbers/awg-stat/pkgs/container/awg-stat)
 - [`ghcr.io/finenumbers/awg-stat-poller:latest`](https://github.com/finenumbers/awg-stat/pkgs/container/awg-stat-poller)
 - [`ghcr.io/finenumbers/awg-stat-migrate:latest`](https://github.com/finenumbers/awg-stat/pkgs/container/awg-stat-migrate)
+- [`ghcr.io/finenumbers/awg-stat-docker-agent:latest`](https://github.com/finenumbers/awg-stat/pkgs/container/awg-stat-docker-agent)
 
-После первой публикации в GitHub Packages выставьте у трёх пакетов visibility **Public** — иначе Portainer не сможет тянуть образы без логина.
+После первой публикации в GitHub Packages выставьте у пакетов visibility **Public** — иначе Portainer не сможет тянуть образы без логина. У `awg-stat-docker-agent` это нужно при первом выкате локального режима.
 
 ## Локальный запуск (Docker)
 
@@ -46,7 +48,7 @@ docker compose up -d --build
    - URL: `https://github.com/finenumbers/awg-stat`
    - Compose path: `deploy/portainer.stack.yml`
    - Branch: `main`
-3. Env: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `APP_ENCRYPTION_KEY` (`openssl rand -base64 32`), `APP_URL` (публичный HTTPS **без** `/` на конце). Для геолокации endpoint: `GEOIP_API_URL` и `GEOIP_API_KEY` (`X-API-Key`). На том же хосте, что GeoIP: `GEOIP_API_URL=http://geoip_api:3000` (`gate-poller` должен быть в сети `proxy`). Пустые значения отключают lookup, опрос не падает.
+3. Env: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `APP_ENCRYPTION_KEY` (`openssl rand -base64 32`), `GATE_DOCKER_AGENT_TOKEN` (отдельный секрет, тоже `openssl rand -base64 32`), `APP_URL` (публичный HTTPS **без** `/` на конце). Для геолокации endpoint: `GEOIP_API_URL` и `GEOIP_API_KEY` (`X-API-Key`). На том же хосте, что GeoIP: `GEOIP_API_URL=http://geoip_api:3000` (`gate-poller` должен быть в сети `proxy`). Пустые значения отключают lookup, опрос не падает. Без `GATE_DOCKER_AGENT_TOKEN` стек не стартует: агент закрыт, если токена нет.
 4. Включите **Re-pull image** при обновлении.
 5. Настройте NPM по инструкции ниже.
 
@@ -117,6 +119,12 @@ APP_URL=https://stat.example.com
 - **502 Bad Gateway** — `gate-app` ещё не готов, не в сети `proxy`, или указан не тот hostname/порт. Нужны именно `gate-app` и `8088`.
 - **Страница логина зацикливается** — `APP_URL` не совпадает с доменом Proxy Host или Force SSL выключен при заходе по HTTPS.
 - **NPM не резолвит `gate-app`** — разные Docker Engine или сеть не `proxy`.
+
+## Amnezia на этом же хосте
+
+В форме «Подключить сервер» выберите **На этом хосте**. SSH-логин не нужен. Публичный адрес в поле нужен для ping и проверки блокировки на cheburcheck. Сама статистика VPN читается из контейнера `amnezia-awg2` через `gate-docker-agent`.
+
+Агент держит Docker socket и не публикует порт наружу. Он не входит в сеть NPM `proxy`. Разрешено только чтение уже запущенного `amnezia-awg2`. Ping публичного адреса этого же сервера из контейнера Gate часто не возвращается — бейдж «Сервер недоступен» при этом не мешает опросу VPN.
 
 ## Задержка до серверов
 

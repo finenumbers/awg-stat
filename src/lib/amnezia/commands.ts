@@ -94,7 +94,7 @@ const REQUIRED_SELECTORS = [
 
 const OPTIONAL_SELECTORS = ["random-trailers", "disable-cookies", "content-padding-addition"] as const;
 
-function pollInnerScript(): string {
+export function pollInnerScript(): string {
   const lines: string[] = ["set +e"];
 
   for (const selector of REQUIRED_SELECTORS) {

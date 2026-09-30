@@ -10,7 +10,7 @@ import {
 import { filterPointsSince } from "@/lib/traffic-points";
 import { comparePeerInternalIp, compareServerName } from "@/lib/utils";
 import type { SshAuthInput } from "@/lib/validations/identity";
-import type { ServerInput } from "@/lib/validations/server";
+import type { LocalServerInput, ServerInput } from "@/lib/validations/server";
 import { presenceCutoff } from "@/server/poll-defaults";
 import { releaseServerRuntime } from "@/server/poller-queues";
 import { createAuditEvent } from "@/server/services/audit.service";
@@ -167,18 +167,32 @@ export async function getPeerDetail(serverId: string, peerId: string) {
   return peer;
 }
 
-export async function createAndOnboardServer(input: ServerInput, ssh: SshAuthInput, userId: string) {
+export async function createAndOnboardServer(
+  input: { kind: "ssh"; server: ServerInput; ssh: SshAuthInput } | { kind: "local"; server: LocalServerInput },
+  userId: string,
+) {
   const server = await db.$transaction(async (tx) => {
+    if (input.kind === "local") {
+      return tx.server.create({
+        data: {
+          name: input.server.name,
+          host: input.server.host.trim(),
+          port: 0,
+          connection: "LOCAL_DOCKER",
+        },
+      });
+    }
     const created = await tx.server.create({
       data: {
-        name: input.name,
-        host: input.host.trim(),
-        port: input.port,
-        sshUsername: ssh.username,
-        sshAuthMethod: ssh.authMethod as AuthMethod,
+        name: input.server.name,
+        host: input.server.host.trim(),
+        port: input.server.port,
+        connection: "SSH",
+        sshUsername: input.ssh.username,
+        sshAuthMethod: input.ssh.authMethod as AuthMethod,
       },
     });
-    await writeServerCredential(created.id, ssh, tx);
+    await writeServerCredential(created.id, input.ssh, tx);
     return created;
   });
 

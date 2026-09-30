@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { sshUpdateRequiresSecret } from "./identity";
+import { sshUpdateBlockReason, sshUpdateRequiresSecret } from "./identity";
+
+test("local docker servers have no SSH settings", () => {
+  assert.equal(sshUpdateBlockReason("LOCAL_DOCKER"), "У локального сервера нет SSH-доступа");
+  assert.equal(sshUpdateBlockReason("SSH"), null);
+});
 
 test("username-only update keeps the stored SSH method", () => {
   assert.equal(sshUpdateRequiresSecret("PASSWORD", "PASSWORD", false), false);

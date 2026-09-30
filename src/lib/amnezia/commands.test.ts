@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   assertReadOnlyCommand,
   awgPollCommand,
+  pollInnerScript,
   dockerInspectCommand,
   dockerPsAllCommand,
   dockerPsCommand,
@@ -17,6 +18,13 @@ test("accepts official awg container names", () => {
   assert.equal(isAllowedContainerName("amnezia-awg2-old"), true);
   assert.equal(isAllowedContainerName("amnezia-openvpn"), false);
   assert.equal(isAllowedContainerName("amnezia-awg; rm -rf /"), false);
+});
+
+test("poll script shared with the local agent is read-only", () => {
+  const script = pollInnerScript();
+  assert.match(script, /awg show all transfer/);
+  assert.match(awgPollCommand("docker", "amnezia-awg2"), /awg show all transfer/);
+  assert.doesNotThrow(() => assertReadOnlyCommand(script));
 });
 
 test("poll command is read-only and uses non-secret selectors", () => {

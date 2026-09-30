@@ -50,6 +50,8 @@ services:
       NODE_ENV: production
       GEOIP_API_URL: ${GEOIP_API_URL:-}
       GEOIP_API_KEY: ${GEOIP_API_KEY:-}
+      GATE_DOCKER_AGENT_URL: http://docker-agent:8090
+      GATE_DOCKER_AGENT_TOKEN: ${GATE_DOCKER_AGENT_TOKEN:?GATE_DOCKER_AGENT_TOKEN is required}
     healthcheck:
       test:
         [
@@ -65,6 +67,32 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      docker-agent:
+        condition: service_healthy
+
+  docker-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: docker-agent
+    container_name: gate-docker-agent
+    restart: unless-stopped
+    environment:
+      GATE_DOCKER_AGENT_TOKEN: ${GATE_DOCKER_AGENT_TOKEN:?GATE_DOCKER_AGENT_TOKEN is required}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8090/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   poller:
     build:
@@ -83,6 +111,8 @@ services:
       GEOIP_API_URL: ${GEOIP_API_URL:-}
       GEOIP_API_KEY: ${GEOIP_API_KEY:-}
       GATE_BLOCK_CHECK: ${GATE_BLOCK_CHECK:-}
+      GATE_DOCKER_AGENT_URL: http://docker-agent:8090
+      GATE_DOCKER_AGENT_TOKEN: ${GATE_DOCKER_AGENT_TOKEN:?GATE_DOCKER_AGENT_TOKEN is required}
     healthcheck:
       test: ["CMD", "node", "/app/poller-health.cjs"]
       interval: 30s
@@ -94,6 +124,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      docker-agent:
+        condition: service_healthy
 
 volumes:
   gate_postgres_data:

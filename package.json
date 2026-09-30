@@ -1,6 +1,6 @@
 {
   "name": "gate",
-  "version": "0.1.43",
+  "version": "0.1.44",
   "private": true,
   "description": "Read-only monitoring and traffic statistics for existing AmneziaVPN / AmneziaWG 3.1 servers",
   "scripts": {
@@ -21,6 +21,7 @@
     "better-auth": "^1.7.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dockerode": "^4.0.12",
     "next": "^15.3.3",
     "p-queue": "^8.1.0",
     "react": "^19.1.0",
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@tailwindcss/postcss": "^4.1.8",
+    "@types/dockerode": "^4.0.1",
     "@types/node": "^22.15.29",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",

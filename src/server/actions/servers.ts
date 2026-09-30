@@ -5,24 +5,68 @@ import { revalidatePath } from "next/cache";
 
 import { requireSession } from "@/lib/session";
 import { parseSshAuthFromFormData } from "@/lib/validations/identity";
-import { serverSchema } from "@/lib/validations/server";
+import { localServerSchema, serverSchema } from "@/lib/validations/server";
 import { updateServerSsh } from "@/server/services/identity.service";
 import { createAndOnboardServer, deleteServer } from "@/server/services/server.service";
 import type { ActionResult } from "@/types/action-result";
+
+function prismaTarget(error: Prisma.PrismaClientKnownRequestError): string {
+  const target = error.meta?.target;
+  if (Array.isArray(target)) {
+    return target.join(" ");
+  }
+  return typeof target === "string" ? target : "";
+}
+
+function isDuplicateLocalServer(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+    return false;
+  }
+  const target = `${prismaTarget(error)} ${error.message}`;
+  return target.includes("server_one_local_docker");
+}
 
 function isDuplicateServerHostPort(error: unknown): boolean {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
     return false;
   }
-  const target = error.meta?.target;
-  if (Array.isArray(target)) {
-    return target.includes("host") && target.includes("port");
+  const target = prismaTarget(error);
+  return target.includes("host") && target.includes("port");
+}
+
+async function onboardNewServer(
+  create: () => ReturnType<typeof createAndOnboardServer>,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const server = await create();
+    revalidatePath("/");
+    revalidatePath("/", "layout");
+    revalidatePath("/peers");
+    return { ok: true, data: { id: server.id } };
+  } catch (error) {
+    if (isDuplicateLocalServer(error)) {
+      return { ok: false, error: "Локальный AmneziaWG уже добавлен" };
+    }
+    if (isDuplicateServerHostPort(error)) {
+      return { ok: false, error: "Сервер с таким хостом и портом уже добавлен" };
+    }
+    return { ok: false, error: error instanceof Error ? error.message : "Не удалось подключить сервер" };
   }
-  return typeof target === "string" && target.includes("host") && target.includes("port");
 }
 
 export async function createServerAction(formData: FormData): Promise<ActionResult<{ id: string }>> {
   const session = await requireSession();
+  if (formData.get("connection") === "LOCAL_DOCKER") {
+    const parsed = localServerSchema.safeParse({
+      name: formData.get("name"),
+      host: formData.get("host"),
+    });
+    if (!parsed.success) {
+      return { ok: false, error: parsed.error.issues[0]?.message ?? "Проверьте поля" };
+    }
+    return onboardNewServer(() => createAndOnboardServer({ kind: "local", server: parsed.data }, session.user.id));
+  }
+
   const parsed = serverSchema.safeParse({
     name: formData.get("name"),
     host: formData.get("host"),
@@ -35,18 +79,9 @@ export async function createServerAction(formData: FormData): Promise<ActionResu
   if (!ssh.success) {
     return { ok: false, error: ssh.error.issues[0]?.message ?? "Проверьте SSH-доступ" };
   }
-  try {
-    const server = await createAndOnboardServer(parsed.data, ssh.data, session.user.id);
-    revalidatePath("/");
-    revalidatePath("/", "layout");
-    revalidatePath("/peers");
-    return { ok: true, data: { id: server.id } };
-  } catch (error) {
-    if (isDuplicateServerHostPort(error)) {
-      return { ok: false, error: "Сервер с таким хостом и портом уже добавлен" };
-    }
-    return { ok: false, error: error instanceof Error ? error.message : "Не удалось подключить сервер" };
-  }
+  return onboardNewServer(() =>
+    createAndOnboardServer({ kind: "ssh", server: parsed.data, ssh: ssh.data }, session.user.id),
+  );
 }
 
 export async function updateServerSshAction(id: string, formData: FormData): Promise<ActionResult> {

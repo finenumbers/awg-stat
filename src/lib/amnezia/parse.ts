@@ -307,7 +307,10 @@ export type ParsedDockerInspect = {
 
 const UDP_HOST_PORT = /(\d+)\/udp=(\d+)/gi;
 
-function parseInspectDate(value: string): Date | null {
+export function parseContainerStartedAt(value: string | null | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
   const text = value.trim();
   if (!text) {
     return null;
@@ -337,7 +340,7 @@ export function parseDockerInspect(raw: string): ParsedDockerInspect {
   const parts = line.includes("\t") ? line.split("\t") : line.split(/\s+/);
   const running = (parts[0] ?? "").toLowerCase() === "true";
   const status = parts[1]?.trim() || null;
-  const startedAt = parseInspectDate(parts[2] ?? "");
+  const startedAt = parseContainerStartedAt(parts[2] ?? "");
   const restartRaw = (parts[3] ?? "").trim();
   const restartCount = /^\d+$/.test(restartRaw) ? Number(restartRaw) : null;
   const portsField = parts.slice(4).join(" ");

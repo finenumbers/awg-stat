@@ -83,6 +83,11 @@ enum DockerAccess {
   SUDO_N_DOCKER
 }
 
+enum ServerConnection {
+  SSH
+  LOCAL_DOCKER
+}
+
 enum AwgVersion {
   V2
   V30
@@ -141,9 +146,11 @@ model Server {
   id                    String       @id @default(cuid())
   name                  String
   host                  String
-  port                  Int          @default(22)
-  sshUsername           String
-  sshAuthMethod         AuthMethod
+  port                  Int               @default(22)
+  /// Partial unique index server_one_local_docker allows only one LOCAL_DOCKER row.
+  connection            ServerConnection  @default(SSH)
+  sshUsername           String?
+  sshAuthMethod         AuthMethod?
   sshHostKeyFingerprint String?
   sshHostKeyVerified    Boolean      @default(false)
   dockerAccess          DockerAccess @default(DOCKER)

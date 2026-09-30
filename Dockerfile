@@ -18,7 +18,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npx prisma generate
 RUN npm run build
-RUN npx esbuild src/worker/main.ts --bundle --platform=node --outfile=dist/poller.cjs --alias:server-only=./src/worker/server-only-stub.ts --external:@prisma/client --external:ssh2
+RUN npx esbuild src/worker/main.ts --bundle --platform=node --outfile=dist/poller.cjs --alias:server-only=./src/worker/server-only-stub.ts --external:@prisma/client --external:ssh2 \
+  && npx esbuild src/docker-agent/main.ts --bundle --platform=node --outfile=dist/docker-agent.cjs --external:dockerode
 
 FROM base AS migrator
 WORKDIR /app
@@ -55,6 +56,21 @@ RUN chmod +x /entrypoint.sh
 USER nextjs
 
 EXPOSE 8088
+
+ENTRYPOINT ["/entrypoint.sh"]
+
+FROM base AS docker-agent
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY --from=builder /app/dist/docker-agent.cjs ./dist/docker-agent.cjs
+COPY docker/docker-agent-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8090
 
 ENTRYPOINT ["/entrypoint.sh"]
 

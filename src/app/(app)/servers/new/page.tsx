@@ -8,7 +8,8 @@ export default async function NewServerPage() {
       <div>
         <h1 className="text-lg font-semibold tracking-tight">Подключить сервер</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Только обнаружение уже установленного AmneziaVPN. SSH-доступ задаётся только для этого сервера.
+          Только обнаружение уже установленного AmneziaVPN. Удалённый сервер подключается по SSH. Amnezia на этом же хосте
+          читается через Docker, без SSH.
         </p>
       </div>
       <ServerForm />

@@ -47,6 +47,13 @@ export const sshAuthUpdateSchema = z
 export type SshAuthInput = z.infer<typeof sshAuthSchema>;
 export type SshAuthUpdateInput = z.infer<typeof sshAuthUpdateSchema>;
 
+export function sshUpdateBlockReason(connection: string | null | undefined): string | null {
+  if (connection === "LOCAL_DOCKER") {
+    return "У локального сервера нет SSH-доступа";
+  }
+  return null;
+}
+
 export function sshUpdateRequiresSecret(
   storedMethod: string,
   nextMethod: string,

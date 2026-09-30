@@ -133,6 +133,7 @@ export default async function ServerPage({
             </div>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
+            {server.connection === "LOCAL_DOCKER" ? "этот хост · " : ""}
             {server.host}
             {server.vpnInstance?.containerName ? ` · ${server.vpnInstance.containerName}` : ""}
             {server.vpnInstance?.listenPort ? ` · UDP ${server.vpnInstance.listenPort}` : ""}
@@ -146,11 +147,13 @@ export default async function ServerPage({
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
-          <ServerSettingsDialog
-            serverId={server.id}
-            username={server.sshUsername}
-            authMethod={server.sshAuthMethod}
-          />
+          {server.connection === "SSH" && server.sshUsername && server.sshAuthMethod ? (
+            <ServerSettingsDialog
+              serverId={server.id}
+              username={server.sshUsername}
+              authMethod={server.sshAuthMethod}
+            />
+          ) : null}
           <DeleteServerDialog serverId={server.id} serverName={server.name} />
         </div>
       </div>

@@ -5,10 +5,12 @@ import {
   dockerInspectCommand,
   dockerPsAllCommand,
   dockerPsCommand,
+  isAllowedContainerName,
   type DockerPrefix,
 } from "@/lib/amnezia/commands";
 import {
   computeDelta,
+  parseContainerStartedAt,
   parseDockerInspect,
   parseDockerPs,
   parsePollOutput,
@@ -16,6 +18,8 @@ import {
   type ParsedDockerInspect,
   type ParsedPoll,
 } from "@/lib/amnezia/parse";
+import { fetchAwgRead, localDockerErrorMessage, type LocalDockerPhase } from "@/lib/docker/agent-client";
+import { LOCAL_AWG_CONTAINER } from "@/lib/docker/awg-target";
 import { db } from "@/lib/db";
 import { getIcmpProbeController } from "@/lib/net/icmp-controller";
 import { withDeadline, withSshConnection, type SshClient, type SshConnectionConfig, type SshSession } from "@/lib/ssh/client";
@@ -74,6 +78,9 @@ async function sshConfigForServer(serverId: string): Promise<SshConnectionConfig
   if (!server) {
     throw new CollectorError("Сервер не найден");
   }
+  if (server.connection === "LOCAL_DOCKER" || !server.sshUsername) {
+    throw new CollectorError("У сервера не задан SSH-доступ");
+  }
   const secret = await getServerSecret(server.id);
   return {
     host: server.host,
@@ -114,7 +121,84 @@ function mapVersion(hint: ParsedPoll["awgVersion"]): AwgVersion {
   return "UNKNOWN";
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+async function readLocalAwg(deadlineMs: number, phase: LocalDockerPhase) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), deadlineMs);
+  try {
+    const read = await fetchAwgRead(controller.signal);
+    if (!read.ok) {
+      throw new CollectorError(localDockerErrorMessage(read.code, phase));
+    }
+    if (read.body.containerName !== LOCAL_AWG_CONTAINER || !isAllowedContainerName(read.body.containerName)) {
+      throw new CollectorError(localDockerErrorMessage("bad_response", phase));
+    }
+    const inspect: ParsedDockerInspect = {
+      running: read.body.running,
+      status: read.body.status,
+      startedAt: parseContainerStartedAt(read.body.startedAt),
+      restartCount: read.body.restartCount,
+      hostListenPort: read.body.hostListenPort,
+    };
+    if (!inspect.running) {
+      throw new CollectorError(localDockerErrorMessage("stopped", phase));
+    }
+    if (read.body.exitCode !== 0 && !read.body.pollStdout.includes("---GATE:transfer---")) {
+      throw new CollectorError("Не удалось прочитать состояние AmneziaWG (только чтение awg show)");
+    }
+    const parsed = parsePollOutput(read.body.pollStdout);
+    if (!parsed.transferOk || !parsed.handshakeOk) {
+      throw new CollectorError(
+        phase === "onboard"
+          ? "Контейнер не отдал селекторы transfer / latest-handshakes. Цифры не выдумываем"
+          : "Нет сырых счётчиков transfer / latest-handshakes",
+      );
+    }
+    return { parsed, inspect, containerName: read.body.containerName, hostKeyFingerprint: null as string | null };
+  } catch (error) {
+    if (error instanceof CollectorError) {
+      throw error;
+    }
+    if (isAbortError(error)) {
+      throw new CollectorError(`Опрос AmneziaWG превысил ${deadlineMs} мс`);
+    }
+    throw new CollectorError("Локальный Docker-агент недоступен");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function finishLocalOnboard(
+  serverId: string,
+  result: { parsed: ParsedPoll; inspect: ParsedDockerInspect; containerName: string },
+) {
+  await db.server.update({
+    where: { id: serverId },
+    data: { dockerAccess: "DOCKER", lastPollError: null },
+  });
+  await persistPoll(serverId, result.containerName, result.parsed, result.inspect);
+  await db.server.update({
+    where: { id: serverId },
+    data: { lastPollAt: new Date(), lastPollError: null },
+  });
+  await enrichServerPeerEndpoints(serverId);
+}
+
 export async function onboardExistingServer(serverId: string, userId: string | null) {
+  const server = await db.server.findUnique({ where: { id: serverId }, select: { connection: true } });
+  if (!server) {
+    throw new CollectorError("Сервер не найден");
+  }
+  if (server.connection === "LOCAL_DOCKER") {
+    const result = await readLocalAwg(POLL_DEADLINE_MS, "onboard");
+    await finishLocalOnboard(serverId, result);
+    void userId;
+    return;
+  }
+
   const config = await sshConfigForServer(serverId);
   const { result, hostKeyFingerprint } = await withSshConnection(config, async (client) => {
     const prefix = await detectDockerPrefix(client);
@@ -257,14 +341,16 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
     .catch(() => null);
 
   try {
-    const config = await sshConfigForServer(serverId);
-    const result = await pollRemote(serverId, config, prefix, containerName, deadlineMs);
+    const result =
+      server.connection === "LOCAL_DOCKER"
+        ? await readLocalAwg(deadlineMs, "poll")
+        : await pollRemote(serverId, await sshConfigForServer(serverId), prefix, containerName, deadlineMs);
     const icmpResult = await icmpPromise;
     if (!canWritePoll(startedEpoch)) {
       return;
     }
 
-    if (result.hostKeyFingerprint && !server.sshHostKeyVerified) {
+    if (server.connection !== "LOCAL_DOCKER" && result.hostKeyFingerprint && !server.sshHostKeyVerified) {
       await db.server.update({
         where: { id: serverId },
         data: { sshHostKeyFingerprint: result.hostKeyFingerprint, sshHostKeyVerified: true },

@@ -3,7 +3,7 @@ import type { AuthMethod, Prisma } from "@prisma/client";
 import { decryptCredential, encryptCredential } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import type { CredentialPayload } from "@/lib/crypto";
-import { sshUpdateRequiresSecret, type SshAuthInput, type SshAuthUpdateInput } from "@/lib/validations/identity";
+import { sshUpdateBlockReason, sshUpdateRequiresSecret, type SshAuthInput, type SshAuthUpdateInput } from "@/lib/validations/identity";
 import { createAuditEvent } from "@/server/services/audit.service";
 
 const SSH_METHOD_SECRET_REQUIRED = "Укажите пароль или ключ";
@@ -37,6 +37,14 @@ export async function updateServerSsh(serverId: string, input: SshAuthUpdateInpu
   const server = await db.server.findUnique({ where: { id: serverId } });
   if (!server) {
     throw new Error("Сервер не найден");
+  }
+
+  const blocked = sshUpdateBlockReason(server.connection);
+  if (blocked) {
+    throw new Error(blocked);
+  }
+  if (!server.sshAuthMethod) {
+    throw new Error("У сервера не задан SSH-доступ");
   }
 
   const hasNewSecret = Boolean(input.password || input.privateKey);
