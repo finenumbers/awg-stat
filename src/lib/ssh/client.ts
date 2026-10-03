@@ -1,5 +1,8 @@
+import type { Socket } from "node:net";
+
 import { Client, type ConnectConfig } from "ssh2";
 
+import { openAwgTunnelSocket, prepareAwgHost } from "@/lib/awg/agent-client";
 import { createHostKeyVerifier } from "@/lib/ssh/host-key";
 
 const DEFAULT_EXEC_TIMEOUT_MS = 45_000;
@@ -16,6 +19,8 @@ export type SshConnectionConfig = {
   passphrase?: string;
   readyTimeout?: number;
   expectedHostKeyFingerprint?: string | null;
+  viaAwg?: boolean;
+  awgConfigHash?: string | null;
 };
 
 export type ExecResult = {
@@ -49,6 +54,11 @@ export class SshClient implements SshSession {
 
   async connect(config: SshConnectionConfig): Promise<{ hostKeyFingerprint: string | null }> {
     const hostKey = createHostKeyVerifier(config.expectedHostKeyFingerprint);
+    let tunnel: Socket | undefined;
+    if (config.viaAwg) {
+      const ip = await prepareAwgHost(config.host);
+      tunnel = await openAwgTunnelSocket(ip, config.port);
+    }
     const connectConfig: ConnectConfig = {
       host: config.host,
       port: config.port,
@@ -58,6 +68,7 @@ export class SshClient implements SshSession {
       hostVerifier: hostKey.verifier,
       keepaliveInterval: DEFAULT_KEEPALIVE_INTERVAL_MS,
       keepaliveCountMax: DEFAULT_KEEPALIVE_COUNT_MAX,
+      sock: tunnel,
     };
 
     if (config.password) {
@@ -83,6 +94,7 @@ export class SshClient implements SshSession {
         })
         .on("error", (error) => {
           this.alive = false;
+          tunnel?.destroy();
           if (settled) {
             return;
           }

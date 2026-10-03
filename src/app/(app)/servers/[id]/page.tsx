@@ -135,6 +135,7 @@ export default async function ServerPage({
           <p className="mt-1 text-sm text-muted-foreground">
             {server.connection === "LOCAL_DOCKER" ? "этот хост · " : ""}
             {server.host}
+            {server.accessViaAwg ? " · через AWG" : ""}
             {server.vpnInstance?.containerName ? ` · ${server.vpnInstance.containerName}` : ""}
             {server.vpnInstance?.listenPort ? ` · UDP ${server.vpnInstance.listenPort}` : ""}
             {server.vpnInstance?.hostListenPort &&
@@ -152,6 +153,9 @@ export default async function ServerPage({
               serverId={server.id}
               username={server.sshUsername}
               authMethod={server.sshAuthMethod}
+              host={server.host}
+              port={server.port}
+              accessViaAwg={server.accessViaAwg}
             />
           ) : null}
           <DeleteServerDialog serverId={server.id} serverName={server.name} />

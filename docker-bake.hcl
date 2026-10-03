@@ -7,7 +7,7 @@ variable "IMAGE_OWNER" {
 }
 
 group "default" {
-  targets = ["app", "poller", "migrate", "docker-agent"]
+  targets = ["app", "poller", "migrate", "docker-agent", "awg"]
 }
 
 target "app" {
@@ -43,6 +43,18 @@ target "docker-agent" {
   labels = {
     "org.opencontainers.image.source" = "https://github.com/finenumbers/awg-stat"
     "org.opencontainers.image.title"  = "awg-stat-docker-agent"
+  }
+}
+
+target "awg" {
+  context    = "."
+  dockerfile = "Dockerfile"
+  target     = "awg"
+  platforms  = ["linux/amd64"]
+  tags = ["${REGISTRY}/${IMAGE_OWNER}/awg-stat-awg:latest"]
+  labels = {
+    "org.opencontainers.image.source" = "https://github.com/finenumbers/awg-stat"
+    "org.opencontainers.image.title"  = "awg-stat-awg"
   }
 }
 

@@ -12,10 +12,25 @@ const serverHost = z
   .max(253)
   .refine(isSafeProbeHost, "Укажите hostname или IP, без флагов и спецсимволов");
 
+const accessViaAwg = z.preprocess(
+  (value) => (value === null || value === undefined || value === "" ? undefined : value),
+  z
+    .enum(["0", "1"])
+    .optional()
+    .transform((value) => value === "1"),
+);
+
 export const serverSchema = z.object({
   name: serverName,
   host: serverHost,
   port: z.coerce.number().int().min(1).max(65535),
+  accessViaAwg,
+});
+
+export const serverAccessSchema = z.object({
+  host: serverHost,
+  port: z.coerce.number().int().min(1).max(65535),
+  accessViaAwg,
 });
 
 export function isLoopbackProbeHost(host: string): boolean {
@@ -39,4 +54,5 @@ export const localServerSchema = z.object({
 });
 
 export type ServerInput = z.infer<typeof serverSchema>;
+export type ServerAccessInput = z.infer<typeof serverAccessSchema>;
 export type LocalServerInput = z.infer<typeof localServerSchema>;

@@ -22,7 +22,16 @@ type SessionEntry = {
 export function sshConfigFingerprint(config: SshConnectionConfig): string {
   return createHash("sha256")
     .update(
-      [config.host, String(config.port), config.username, config.password ?? "", config.privateKey ?? "", config.passphrase ?? ""].join(
+      [
+        config.host,
+        String(config.port),
+        config.username,
+        config.password ?? "",
+        config.privateKey ?? "",
+        config.passphrase ?? "",
+        config.viaAwg ? "awg" : "direct",
+        config.awgConfigHash ?? "",
+      ].join(
         "\0",
       ),
     )

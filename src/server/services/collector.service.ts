@@ -18,6 +18,7 @@ import {
   type ParsedDockerInspect,
   type ParsedPoll,
 } from "@/lib/amnezia/parse";
+import { probeAwgIcmp } from "@/lib/awg/agent-client";
 import { fetchAwgRead, localDockerErrorMessage, type LocalDockerPhase } from "@/lib/docker/agent-client";
 import { LOCAL_AWG_CONTAINER } from "@/lib/docker/awg-target";
 import { db } from "@/lib/db";
@@ -82,6 +83,18 @@ async function sshConfigForServer(serverId: string): Promise<SshConnectionConfig
     throw new CollectorError("У сервера не задан SSH-доступ");
   }
   const secret = await getServerSecret(server.id);
+  const viaAwg = server.accessViaAwg;
+  let awgConfigHash: string | null = null;
+  if (viaAwg) {
+    const awg = await db.awgClientConfig.findUnique({ where: { id: "default" } });
+    if (!awg) {
+      throw new CollectorError("Клиент AmneziaWG не настроен");
+    }
+    if (awg.applyError) {
+      throw new CollectorError(awg.applyError);
+    }
+    awgConfigHash = awg.configHash;
+  }
   return {
     host: server.host,
     port: server.port,
@@ -90,6 +103,8 @@ async function sshConfigForServer(serverId: string): Promise<SshConnectionConfig
     privateKey: secret.privateKey,
     passphrase: secret.passphrase,
     expectedHostKeyFingerprint: server.sshHostKeyVerified ? server.sshHostKeyFingerprint : null,
+    viaAwg,
+    awgConfigHash,
   };
 }
 
@@ -336,9 +351,12 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
   const containerName = server.vpnInstance?.containerName ?? "amnezia-awg2";
   const deadlineMs = options?.deadlineMs ?? POLL_DEADLINE_MS;
   const startedEpoch = options?.epoch === undefined ? getPollerEpoch() : options.epoch;
-  const icmpPromise = getIcmpProbeController()
-    .probe(server.id, server.host)
-    .catch(() => null);
+  const viaAwg = server.connection === "SSH" && server.accessViaAwg;
+  const icmpPromise = viaAwg
+    ? probeAwgIcmp(server.host).catch(() => ({ rttMs: null as number | null }))
+    : getIcmpProbeController()
+        .probe(server.id, server.host)
+        .catch(() => null);
 
   try {
     const result =

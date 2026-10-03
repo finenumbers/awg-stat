@@ -78,6 +78,22 @@ export function ServerForm() {
         )}
       </div>
       {local ? null : (
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">Маршрут до этого узла</legend>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" name="accessViaAwg" value="0" defaultChecked />
+            Напрямую
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" name="accessViaAwg" value="1" />
+            Через AmneziaWG
+          </label>
+          <p className="text-sm text-muted-foreground">
+            Через туннель пойдут только SSH и проверка доступности этого хоста. Клиент настраивается в разделе AmneziaWG.
+          </p>
+        </fieldset>
+      )}
+      {local ? null : (
         <fieldset className="space-y-3">
           <legend className="text-sm font-medium">SSH этого сервера</legend>
           <p className="text-sm text-muted-foreground">

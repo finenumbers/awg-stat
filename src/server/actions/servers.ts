@@ -5,9 +5,9 @@ import { revalidatePath } from "next/cache";
 
 import { requireSession } from "@/lib/session";
 import { parseSshAuthFromFormData } from "@/lib/validations/identity";
-import { localServerSchema, serverSchema } from "@/lib/validations/server";
+import { localServerSchema, serverAccessSchema, serverSchema } from "@/lib/validations/server";
 import { updateServerSsh } from "@/server/services/identity.service";
-import { createAndOnboardServer, deleteServer } from "@/server/services/server.service";
+import { createAndOnboardServer, deleteServer, updateServerAccess } from "@/server/services/server.service";
 import type { ActionResult } from "@/types/action-result";
 
 function prismaTarget(error: Prisma.PrismaClientKnownRequestError): string {
@@ -71,6 +71,7 @@ export async function createServerAction(formData: FormData): Promise<ActionResu
     name: formData.get("name"),
     host: formData.get("host"),
     port: formData.get("port"),
+    accessViaAwg: formData.get("accessViaAwg"),
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Проверьте поля" };
@@ -82,6 +83,26 @@ export async function createServerAction(formData: FormData): Promise<ActionResu
   return onboardNewServer(() =>
     createAndOnboardServer({ kind: "ssh", server: parsed.data, ssh: ssh.data }, session.user.id),
   );
+}
+
+export async function updateServerAccessAction(id: string, formData: FormData): Promise<ActionResult> {
+  const session = await requireSession();
+  const parsed = serverAccessSchema.safeParse({
+    host: formData.get("host"),
+    port: formData.get("port"),
+    accessViaAwg: formData.get("accessViaAwg"),
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Проверьте адрес" };
+  }
+  try {
+    await updateServerAccess(id, parsed.data, session.user.id);
+    revalidatePath(`/servers/${id}`);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Не удалось сохранить доступ" };
+  }
 }
 
 export async function updateServerSshAction(id: string, formData: FormData): Promise<ActionResult> {

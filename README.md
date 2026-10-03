@@ -23,6 +23,7 @@
 - [`ghcr.io/finenumbers/awg-stat-poller:latest`](https://github.com/finenumbers/awg-stat/pkgs/container/awg-stat-poller)
 - [`ghcr.io/finenumbers/awg-stat-migrate:latest`](https://github.com/finenumbers/awg-stat/pkgs/container/awg-stat-migrate)
 - [`ghcr.io/finenumbers/awg-stat-docker-agent:latest`](https://github.com/finenumbers/awg-stat/pkgs/container/awg-stat-docker-agent)
+- [`ghcr.io/finenumbers/awg-stat-awg:latest`](https://github.com/finenumbers/awg-stat/pkgs/container/awg-stat-awg)
 
 После первой публикации в GitHub Packages выставьте у пакетов visibility **Public** — иначе Portainer не сможет тянуть образы без логина. У `awg-stat-docker-agent` это нужно при первом выкате локального режима.
 
@@ -48,7 +49,7 @@ docker compose up -d --build
    - URL: `https://github.com/finenumbers/awg-stat`
    - Compose path: `deploy/portainer.stack.yml`
    - Branch: `main`
-3. Env: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `APP_ENCRYPTION_KEY` (`openssl rand -base64 32`), `GATE_DOCKER_AGENT_TOKEN` (отдельный секрет, тоже `openssl rand -base64 32`), `APP_URL` (публичный HTTPS **без** `/` на конце). Для геолокации endpoint: `GEOIP_API_URL` и `GEOIP_API_KEY` (`X-API-Key`). На том же хосте, что GeoIP: `GEOIP_API_URL=http://geoip_api:3000` (`gate-poller` должен быть в сети `proxy`). Пустые значения отключают lookup, опрос не падает. Без `GATE_DOCKER_AGENT_TOKEN` стек не стартует: агент закрыт, если токена нет.
+3. Env: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `APP_ENCRYPTION_KEY` (`openssl rand -base64 32`), `GATE_DOCKER_AGENT_TOKEN` и `GATE_AWG_TOKEN` (отдельные секреты, тоже `openssl rand -base64 32`), `APP_URL` (публичный HTTPS **без** `/` на конце). Для геолокации endpoint: `GEOIP_API_URL` и `GEOIP_API_KEY` (`X-API-Key`). На том же хосте, что GeoIP: `GEOIP_API_URL=http://geoip_api:3000` (`gate-poller` должен быть в сети `proxy`). Пустые значения отключают lookup, опрос не падает. Без `GATE_DOCKER_AGENT_TOKEN` или `GATE_AWG_TOKEN` стек не стартует: служебные API закрыты, если токена нет. `GATE_AWG_TOKEN` нужен до Pull and redeploy. На хосте должен быть `/dev/net/tun`.
 4. Включите **Re-pull image** при обновлении.
 5. Настройте NPM по инструкции ниже.
 
@@ -139,6 +140,14 @@ ICMP **не обязателен** для опроса VPN. В Docker нужен
 ```bash
 docker exec gate-poller ping -c 1 <host>
 ```
+
+## Клиент AmneziaWG
+
+В сайдбаре раздел **AmneziaWG**. Туда загружается один `.conf` клиента из приложения AmneziaVPN (замена и отключение там же). Индикатор зелёный, пока рукопожатие свежее: это связь с VPN-сервером, не доступность узла.
+
+Туннель не становится выходом контейнеров в интернет. `AllowedIPs = 0.0.0.0/0` из файла не превращается в default route. SSH и ICMP идут через него только у узла, у которого в адресе выбран **Через AmneziaWG**. Перед сохранением Gate проверяет, что этот хост достижим выбранным путём. Если туннель при этом направил бы весь трафик в VPN или подменил DNS, конфиг не применяется.
+
+`gate-awg` не публикует порт и не входит в сеть NPM. Останов этого контейнера не останавливает опрос узлов, которые ходят напрямую.
 
 ## Безопасность чтения
 

@@ -163,7 +163,10 @@ export default async function OverviewPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <CardTitle>{server.name}</CardTitle>
-                        <CardDescription>{server.host}</CardDescription>
+                        <CardDescription>
+                          {server.host}
+                          {server.accessViaAwg ? " · через AWG" : ""}
+                        </CardDescription>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">
                         <div className="flex items-center gap-1.5">

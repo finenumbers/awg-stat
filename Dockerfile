@@ -1,3 +1,20 @@
+FROM golang:1.25-bookworm AS awg-go
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git make ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git clone --depth 1 --branch v3.1.20260828 https://github.com/amnezia-vpn/amneziawg-go.git .
+RUN CGO_ENABLED=0 make
+
+FROM debian:bookworm-slim AS awg-tools
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git make gcc libc6-dev libmnl-dev pkg-config ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git clone --depth 1 --branch v3.1.20260812 https://github.com/amnezia-vpn/amneziawg-tools.git .
+WORKDIR /src/src
+RUN make && make install DESTDIR=/out PREFIX=/usr
+
 FROM node:22-bookworm-slim AS base
 
 FROM base AS deps
@@ -19,7 +36,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npx prisma generate
 RUN npm run build
 RUN npx esbuild src/worker/main.ts --bundle --platform=node --outfile=dist/poller.cjs --alias:server-only=./src/worker/server-only-stub.ts --external:@prisma/client --external:ssh2 \
-  && npx esbuild src/docker-agent/main.ts --bundle --platform=node --outfile=dist/docker-agent.cjs --external:dockerode
+  && npx esbuild src/docker-agent/main.ts --bundle --platform=node --outfile=dist/docker-agent.cjs --external:dockerode \
+  && npx esbuild src/awg-agent/main.ts --bundle --platform=node --outfile=dist/awg-agent.cjs
 
 FROM base AS migrator
 WORKDIR /app
@@ -98,5 +116,26 @@ RUN chmod +x /entrypoint.sh
 USER nextjs
 
 STOPSIGNAL SIGTERM
+
+ENTRYPOINT ["/entrypoint.sh"]
+
+FROM base AS awg
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV AWG_GO_VERSION=v3.1.20260828
+ENV AWG_TOOLS_VERSION=v3.1.20260812
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends iproute2 iputils-ping iptables libmnl0 ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=awg-go /src/amneziawg-go /usr/local/bin/amneziawg-go
+COPY --from=awg-tools /out/usr/bin/awg /usr/local/bin/awg
+COPY --from=builder /app/dist/awg-agent.cjs ./dist/awg-agent.cjs
+COPY docker/awg-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh /usr/local/bin/amneziawg-go /usr/local/bin/awg
+
+EXPOSE 8091
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -10,6 +10,7 @@ fi
 SECRET="$(openssl rand -base64 32)"
 KEY="$(openssl rand -base64 32)"
 AGENT_TOKEN="$(openssl rand -base64 32)"
+AWG_TOKEN="$(openssl rand -base64 32)"
 
 cat > .env <<EOF
 POSTGRES_PASSWORD=gate
@@ -22,6 +23,7 @@ APP_ENCRYPTION_KEY=${KEY}
 GEOIP_API_URL=
 GEOIP_API_KEY=
 GATE_DOCKER_AGENT_TOKEN=${AGENT_TOKEN}
+GATE_AWG_TOKEN=${AWG_TOKEN}
 EOF
 
 echo "Wrote .env"

@@ -9,13 +9,16 @@ import {
 } from "@/lib/peers-matrix";
 import { filterPointsSince } from "@/lib/traffic-points";
 import { comparePeerInternalIp, compareServerName } from "@/lib/utils";
+import { withSshConnection } from "@/lib/ssh/client";
+import { getSshSessionRegistry } from "@/lib/ssh/session-registry";
 import type { SshAuthInput } from "@/lib/validations/identity";
-import type { LocalServerInput, ServerInput } from "@/lib/validations/server";
+import type { LocalServerInput, ServerAccessInput, ServerInput } from "@/lib/validations/server";
 import { presenceCutoff } from "@/server/poll-defaults";
 import { releaseServerRuntime } from "@/server/poller-queues";
 import { createAuditEvent } from "@/server/services/audit.service";
+import { assertAwgTcp, syncAwgRoutes } from "@/server/services/awg-client.service";
 import { CollectorError, onboardExistingServer } from "@/server/services/collector.service";
-import { writeServerCredential } from "@/server/services/identity.service";
+import { getServerSecret, writeServerCredential } from "@/server/services/identity.service";
 
 export type TrafficWindowId = "30m" | "24h" | "30d";
 
@@ -171,6 +174,14 @@ export async function createAndOnboardServer(
   input: { kind: "ssh"; server: ServerInput; ssh: SshAuthInput } | { kind: "local"; server: LocalServerInput },
   userId: string,
 ) {
+  if (input.kind === "ssh" && input.server.accessViaAwg) {
+    try {
+      await assertAwgTcp(input.server.host, input.server.port);
+    } catch (error) {
+      await syncAwgRoutes().catch(() => undefined);
+      throw error;
+    }
+  }
   const server = await db.$transaction(async (tx) => {
     if (input.kind === "local") {
       return tx.server.create({
@@ -190,6 +201,7 @@ export async function createAndOnboardServer(
         connection: "SSH",
         sshUsername: input.ssh.username,
         sshAuthMethod: input.ssh.authMethod as AuthMethod,
+        accessViaAwg: input.server.accessViaAwg,
       },
     });
     await writeServerCredential(created.id, input.ssh, tx);
@@ -200,8 +212,12 @@ export async function createAndOnboardServer(
     await onboardExistingServer(server.id, userId);
   } catch (error) {
     await db.server.delete({ where: { id: server.id } });
+    await syncAwgRoutes().catch(() => undefined);
     const message = error instanceof CollectorError ? error.message : "Не удалось подключиться к существующему AmneziaVPN";
     throw new Error(message);
+  }
+  if (input.kind === "ssh" && input.server.accessViaAwg) {
+    await syncAwgRoutes().catch(() => undefined);
   }
 
   await createAuditEvent({
@@ -264,6 +280,7 @@ export async function deleteServer(id: string, userId: string): Promise<{ name: 
     where: { id },
     select: {
       name: true,
+      accessViaAwg: true,
       vpnInstance: { select: { id: true, peers: { select: { id: true } } } },
     },
   });
@@ -301,7 +318,75 @@ export async function deleteServer(id: string, userId: string): Promise<{ name: 
     });
   });
 
+  if (snapshot.accessViaAwg) {
+    await syncAwgRoutes().catch(() => undefined);
+  }
+
   return { name: snapshot.name };
+}
+
+export async function updateServerAccess(serverId: string, input: ServerAccessInput, userId: string) {
+  const server = await db.server.findUnique({ where: { id: serverId } });
+  if (!server || server.connection !== "SSH" || !server.sshUsername) {
+    throw new Error("SSH-доступ этого сервера нельзя изменить");
+  }
+  try {
+    if (input.accessViaAwg) {
+      await assertAwgTcp(input.host, input.port);
+    }
+    const secret = await getServerSecret(server.id);
+    const sameTarget = input.host === server.host && input.port === server.port;
+    const awg = input.accessViaAwg
+      ? await db.awgClientConfig.findUnique({ where: { id: "default" }, select: { configHash: true } })
+      : null;
+    const { hostKeyFingerprint } = await withSshConnection(
+      {
+        host: input.host,
+        port: input.port,
+        username: server.sshUsername,
+        password: secret.password,
+        privateKey: secret.privateKey,
+        passphrase: secret.passphrase,
+        viaAwg: input.accessViaAwg,
+        awgConfigHash: awg?.configHash ?? null,
+        expectedHostKeyFingerprint: sameTarget && server.sshHostKeyVerified ? server.sshHostKeyFingerprint : null,
+      },
+      async (client) => {
+        await client.exec("true");
+      },
+    );
+    try {
+      await db.server.update({
+        where: { id: serverId },
+        data: {
+          host: input.host,
+          port: input.port,
+          accessViaAwg: input.accessViaAwg,
+          ...(sameTarget
+            ? {}
+            : {
+                sshHostKeyFingerprint: hostKeyFingerprint,
+                sshHostKeyVerified: Boolean(hostKeyFingerprint),
+              }),
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new Error("Сервер с таким хостом и портом уже добавлен");
+      }
+      throw error;
+    }
+    getSshSessionRegistry().invalidate(serverId);
+    await createAuditEvent({
+      userId,
+      action: "SERVER_UPDATED",
+      entityType: "server",
+      entityId: serverId,
+      metadata: { host: input.host, port: input.port, accessViaAwg: input.accessViaAwg },
+    });
+  } finally {
+    await syncAwgRoutes().catch(() => undefined);
+  }
 }
 
 export type TrafficDirectionTotals = { rx: bigint; tx: bigint };

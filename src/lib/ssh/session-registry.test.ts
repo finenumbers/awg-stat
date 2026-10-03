@@ -63,6 +63,23 @@ test("reuses a live session for the same config", async () => {
   assert.equal(created[0]?.connectCalls, 1);
 });
 
+test("opens a new session when the path switches to AWG", async () => {
+  const created: FakeClient[] = [];
+  const registry = new SshSessionRegistry({
+    createClient: () => {
+      const client = new FakeClient();
+      created.push(client);
+      return client;
+    },
+  });
+
+  await registry.acquire("srv-1", baseConfig);
+  await registry.acquire("srv-1", { ...baseConfig, viaAwg: true, awgConfigHash: "hash-a" });
+
+  assert.equal(created.length, 2);
+  assert.equal(created[0]?.ended, true);
+});
+
 test("opens a new session when the secret changes", async () => {
   const created: FakeClient[] = [];
   const registry = new SshSessionRegistry({

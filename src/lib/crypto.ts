@@ -35,6 +35,30 @@ export function encryptCredential(payload: CredentialPayload): EncryptedBlob {
   };
 }
 
+export function encryptUtf8(text: string): EncryptedBlob {
+  const key = getEncryptionKey();
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv(ALGORITHM, key, iv);
+  const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
+  return {
+    encryptedData: encrypted.toString("base64"),
+    iv: iv.toString("base64"),
+    authTag: cipher.getAuthTag().toString("base64"),
+    keyVersion: 1,
+  };
+}
+
+export function decryptUtf8(blob: EncryptedBlob): string {
+  const key = getEncryptionKey();
+  const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(blob.iv, "base64"));
+  decipher.setAuthTag(Buffer.from(blob.authTag, "base64"));
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(blob.encryptedData, "base64")),
+    decipher.final(),
+  ]);
+  return decrypted.toString("utf8");
+}
+
 export function decryptCredential(blob: EncryptedBlob): CredentialPayload {
   const key = getEncryptionKey();
   const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(blob.iv, "base64"));

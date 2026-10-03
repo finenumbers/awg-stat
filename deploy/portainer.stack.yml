@@ -7,7 +7,7 @@
 #   Branch: main
 # Enable "Re-pull image" on update. Images are always :latest.
 #
-# After the first GHCR publish, set the three packages to Public.
+# After the first GHCR publish, set the packages to Public, including awg-stat-awg.
 # NPM: see README «Настройка Nginx Proxy Manager».
 # Proxy Host: http://gate-app:8088, WebSockets ON, Force SSL.
 # APP_URL must be the public HTTPS URL without a trailing slash.
@@ -58,6 +58,8 @@ services:
       GEOIP_API_KEY: ${GEOIP_API_KEY:-}
       GATE_DOCKER_AGENT_URL: http://docker-agent:8090
       GATE_DOCKER_AGENT_TOKEN: ${GATE_DOCKER_AGENT_TOKEN:?GATE_DOCKER_AGENT_TOKEN is required}
+      GATE_AWG_URL: http://awg:8091
+      GATE_AWG_TOKEN: ${GATE_AWG_TOKEN:?GATE_AWG_TOKEN is required}
     healthcheck:
       test:
         [
@@ -118,6 +120,8 @@ services:
       GATE_BLOCK_CHECK: ${GATE_BLOCK_CHECK:-}
       GATE_DOCKER_AGENT_URL: http://docker-agent:8090
       GATE_DOCKER_AGENT_TOKEN: ${GATE_DOCKER_AGENT_TOKEN:?GATE_DOCKER_AGENT_TOKEN is required}
+      GATE_AWG_URL: http://awg:8091
+      GATE_AWG_TOKEN: ${GATE_AWG_TOKEN:?GATE_AWG_TOKEN is required}
     healthcheck:
       test: ["CMD", "node", "/app/poller-health.cjs"]
       interval: 30s
@@ -134,6 +138,36 @@ services:
     networks:
       - default
       - npm_proxy
+
+  awg:
+    image: ghcr.io/finenumbers/awg-stat-awg:latest
+    pull_policy: always
+    container_name: gate-awg
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      - net.ipv4.conf.all.rp_filter=2
+      - net.ipv4.conf.default.rp_filter=2
+    environment:
+      GATE_AWG_TOKEN: ${GATE_AWG_TOKEN:?GATE_AWG_TOKEN is required}
+    tmpfs:
+      - /run/gate-awg
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8091/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
 networks:
   npm_proxy:

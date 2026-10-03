@@ -118,6 +118,8 @@ enum AuditAction {
   SETTINGS_UPDATED
   PEER_ALIAS_UPDATED
   POLL_FAILED
+  AWG_CONFIG_UPDATED
+  AWG_CONFIG_DELETED
 }
 
 enum BlockCheckStatus {
@@ -132,6 +134,25 @@ model PollerLease {
   epoch     Int      @default(0)
 
   @@map("poller_lease")
+}
+
+model AwgClientConfig {
+  id            String   @id @default("default")
+  encryptedData String
+  iv            String
+  authTag       String
+  keyVersion    Int      @default(1)
+  configHash    String
+  endpointHost  String
+  endpointPort  Int
+  clientAddress String
+  peerPublicKey String
+  allowedIps    String
+  dnsHost       String?
+  applyError    String?
+  updatedAt     DateTime @updatedAt
+
+  @@map("awg_client_config")
 }
 
 model AppSettings {
@@ -160,6 +181,7 @@ model Server {
   lastIcmpAt            DateTime?
   lastBlockStatus       BlockCheckStatus?
   lastBlockCheckedAt    DateTime?
+  accessViaAwg          Boolean      @default(false)
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 
