@@ -300,6 +300,17 @@ export function ipInCidr(ip: string, cidr: string): boolean {
   return (ipv6ToBigInt(ip) >> shift) === (ipv6ToBigInt(network) >> shift);
 }
 
+export function sameIp(a: string, b: string): boolean {
+  const kind = isIP(a);
+  if (kind === 0 || kind !== isIP(b)) {
+    return false;
+  }
+  if (kind === 4) {
+    return ipv4ToInt(a) === ipv4ToInt(b);
+  }
+  return ipv6ToBigInt(a) === ipv6ToBigInt(b);
+}
+
 function ipv4ToInt(ip: string): number {
   const parts = ip.split(".").map(Number);
   return (((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0);

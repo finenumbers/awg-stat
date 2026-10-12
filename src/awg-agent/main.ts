@@ -152,6 +152,10 @@ function main() {
             sendJson(response, 200, { ok: true });
             return;
           }
+          if (request.method === "GET" && url === "/v1/routes") {
+            sendJson(response, 200, await tunnel.exclusive(() => tunnel.listRoutes()));
+            return;
+          }
           if (request.method === "PUT" && url === "/v1/routes") {
             const body = (await readJson(request)) as { hosts?: unknown };
             const hosts = Array.isArray(body.hosts) ? body.hosts.filter((host): host is string => typeof host === "string") : null;

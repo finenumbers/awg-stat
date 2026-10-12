@@ -9,10 +9,21 @@ import {
   hashAwgConf,
   parseAwgConf,
   renderSetconf,
+  sameIp,
   type ParsedAwgConf,
 } from "@/lib/awg/conf";
 import { isSafeProbeHost } from "@/lib/net/probe-host";
-import { chooseRouteIp, privateDnsRoute } from "@/lib/awg/routes";
+import {
+  chooseRouteIp,
+  deletionPlan,
+  hostKeepDecision,
+  kernelSnapshotUsable,
+  parseIfaceRoutes,
+  privateDnsRoute,
+  visibleAwgRoutes,
+  type AwgListedRoute,
+  type ShownRoute,
+} from "@/lib/awg/routes";
 
 const IFACE = "awg0";
 const CONF_PATH = "/run/gate-awg/awg0.conf";
@@ -31,24 +42,40 @@ export type TunnelStatus = {
   applyError: string | null;
 };
 
-type CommandResult = { code: number; stdout: string };
+const OUTPUT_LIMIT = 64_000;
+
+type CommandResult = { code: number; stdout: string; stderr: string; truncated: boolean };
 
 function run(command: string, args: string[], timeoutMs = 8_000): Promise<CommandResult> {
   return new Promise((resolve) => {
     const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
+    let stderr = "";
+    let truncated = false;
     const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+    const capture = (current: string, chunk: Buffer, limitStdout: boolean) => {
+      const next = current + chunk.toString("utf8");
+      if (next.length <= OUTPUT_LIMIT) {
+        return next;
+      }
+      if (limitStdout) {
+        truncated = true;
+      }
+      return next.slice(0, OUTPUT_LIMIT);
+    };
     child.stdout?.on("data", (chunk: Buffer) => {
-      stdout = (stdout + chunk.toString("utf8")).slice(0, 64_000);
+      stdout = capture(stdout, chunk, true);
     });
-    child.stderr?.on("data", () => undefined);
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr = capture(stderr, chunk, false);
+    });
     child.on("error", () => {
       clearTimeout(timer);
-      resolve({ code: 127, stdout });
+      resolve({ code: 127, stdout, stderr, truncated });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      resolve({ code: code ?? 1, stdout });
+      resolve({ code: code ?? 1, stdout, stderr, truncated });
     });
   });
 }
@@ -81,6 +108,8 @@ export class AwgTunnel {
   private endpointIps: string[] = [];
   private endpointResolvedAt = 0;
   private readonly routes = new Map<string, 32 | 128>();
+  private readonly nodeBindings = new Map<string, string>();
+  private dnsBinding: string | null = null;
   private chain: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly version: string) {}
@@ -168,28 +197,119 @@ export class AwgTunnel {
   async replaceRoutes(hosts: string[]): Promise<HostRouteResult[]> {
     this.requireUp();
     await this.refreshEndpoint(false);
-    const keep = new Set<string>();
+    const keep: string[] = [];
+    const nextNodes = new Map<string, string>();
+    let nextDns: string | null = null;
+    let sweep = true;
+
     const dns = privateDnsRoute(this.parsed!, this.endpointIps);
     if (dns) {
-      await this.addRoute(dns, isIP(dns) === 6 ? 128 : 32);
-      keep.add(dns);
+      const installed = await this.installKnown(dns, isIP(dns) === 6 ? 128 : 32);
+      const previous = this.dnsBinding;
+      if (installed) {
+        keep.push(dns);
+        nextDns = dns;
+      } else if (previous && this.hasTracked(previous)) {
+        keep.push(previous);
+        nextDns = previous;
+        sweep = false;
+      } else {
+        sweep = false;
+      }
     }
+
     const results: HostRouteResult[] = [];
     for (const host of hosts) {
-      try {
-        const ip = await this.prepareUnlocked(host);
-        keep.add(ip);
-        results.push({ host, ip });
-      } catch (error) {
-        results.push({ host, error: error instanceof Error ? error.message : "Нет маршрута до узла через AmneziaWG" });
+      const resolved = await resolveAll(host);
+      const previous = this.nodeBindings.get(host) ?? null;
+      const havePreviousRoute = previous !== null && this.hasTracked(previous);
+      const choice =
+        resolved.length > 0
+          ? chooseRouteIp({
+              resolved,
+              endpointIps: this.endpointIps,
+              allowedIps: this.parsed!.allowedIps,
+              families: addressFamilies(this.parsed!.addresses),
+              previousIp: previous,
+            })
+          : null;
+      const installed = choice?.ok ? await this.installKnown(choice.ip, choice.prefix) : false;
+      const decision = hostKeepDecision({
+        previousIp: previous,
+        havePreviousRoute,
+        resolved,
+        allowedChoice: choice,
+        installed,
+      });
+      if (decision.sweepUnsafe) {
+        sweep = false;
+      }
+      if (decision.keepIp) {
+        keep.push(decision.keepIp);
+        nextNodes.set(host, decision.keepIp);
+      }
+      results.push(
+        decision.keepIp
+          ? decision.error
+            ? { host, ip: decision.keepIp, error: decision.error }
+            : { host, ip: decision.keepIp }
+          : { host, error: decision.error ?? "Нет маршрута до узла через AmneziaWG" },
+      );
+    }
+
+    const snapshot = sweep ? await this.readKernelRoutes() : null;
+    if (snapshot && !snapshot.ok) {
+      sweep = false;
+    }
+    const plan = deletionPlan({
+      keep,
+      tracked: [...this.routes.keys()],
+      shown: snapshot?.ok ? snapshot.routes : null,
+      ownAddresses: this.parsed!.addresses,
+      sweep: sweep && snapshot?.ok === true,
+    });
+    for (const ip of plan.tracked) {
+      const removed = await this.deleteTracked(ip);
+      if (removed) {
+        console.info(`[awg] removed route ${ip}`);
       }
     }
-    for (const ip of [...this.routes.keys()]) {
-      if (!keep.has(ip)) {
-        await this.deleteRoute(ip);
+    for (const route of plan.kernel) {
+      const removed = await this.deleteUntracked(route.ip, route.prefix);
+      if (removed) {
+        console.info(`[awg] removed route ${route.ip}`);
       }
     }
+    if (!sweep) {
+      console.warn("[awg] skip stale route sweep");
+    }
+
+    this.nodeBindings.clear();
+    for (const [host, ip] of nextNodes) {
+      if (this.hasTracked(ip)) {
+        this.nodeBindings.set(host, ip);
+      }
+    }
+    this.dnsBinding = nextDns && this.hasTracked(nextDns) ? nextDns : null;
     return results;
+  }
+
+  async listRoutes(): Promise<{ up: true; routes: AwgListedRoute[] } | { up: false }> {
+    if (!this.parsed || !this.go || this.applyError) {
+      return { up: false };
+    }
+    const snapshot = await this.readKernelRoutes();
+    if (!snapshot.ok) {
+      throw new Error("Не удалось прочитать маршруты AmneziaWG");
+    }
+    return {
+      up: true,
+      routes: visibleAwgRoutes({
+        shown: snapshot.routes,
+        ownAddresses: this.parsed.addresses,
+        bindings: this.bindingList(),
+      }).map(({ host, ip, dns }) => ({ host, ip, dns })),
+    };
   }
 
   async prepare(host: string): Promise<string> {
@@ -287,6 +407,7 @@ export class AwgTunnel {
       throw new Error(choice.error);
     }
     await this.addRoute(choice.ip, choice.prefix);
+    this.nodeBindings.set(host, choice.ip);
     return choice.ip;
   }
 
@@ -300,6 +421,7 @@ export class AwgTunnel {
       return;
     }
     await this.addRoute(dns, isIP(dns) === 6 ? 128 : 32);
+    this.dnsBinding = dns;
   }
 
   private async addRoute(ip: string, prefix: 32 | 128) {
@@ -313,13 +435,82 @@ export class AwgTunnel {
     this.routes.set(ip, prefix);
   }
 
-  private async deleteRoute(ip: string) {
-    const prefix = this.routes.get(ip);
-    if (!prefix) {
-      return;
+  private hasTracked(ip: string): boolean {
+    for (const key of this.routes.keys()) {
+      if (sameIp(key, ip)) {
+        return true;
+      }
     }
-    await run("ip", ["route", "del", `${ip}/${prefix}`, "dev", IFACE]);
-    this.routes.delete(ip);
+    return false;
+  }
+
+  private async installKnown(ip: string, prefix: 32 | 128): Promise<boolean> {
+    try {
+      await this.addRoute(ip, prefix);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async readKernelRoutes(): Promise<{ ok: true; routes: ShownRoute[] } | { ok: false }> {
+    const shown = await run("ip", ["-o", "route", "show", "dev", IFACE]);
+    if (!kernelSnapshotUsable(shown)) {
+      return { ok: false };
+    }
+    return { ok: true, routes: parseIfaceRoutes(shown.stdout) };
+  }
+
+  private bindingList(): AwgListedRoute[] {
+    const bindings: AwgListedRoute[] = [];
+    if (this.dnsBinding && this.hasTracked(this.dnsBinding)) {
+      bindings.push({ host: this.dnsBinding, ip: this.dnsBinding, dns: true });
+    }
+    for (const [host, ip] of this.nodeBindings) {
+      if (this.hasTracked(ip)) {
+        bindings.push({ host, ip, dns: false });
+      }
+    }
+    return bindings;
+  }
+
+  private async deleteTracked(ip: string): Promise<boolean> {
+    const prefix = this.prefixFor(ip);
+    if (!prefix) {
+      return false;
+    }
+    const removed = await this.deleteKernel(ip, prefix);
+    if (!removed) {
+      return false;
+    }
+    for (const key of [...this.routes.keys()]) {
+      if (sameIp(key, ip)) {
+        this.routes.delete(key);
+      }
+    }
+    return true;
+  }
+
+  private async deleteUntracked(ip: string, prefix: 32 | 128): Promise<boolean> {
+    return this.deleteKernel(ip, prefix);
+  }
+
+  private prefixFor(ip: string): 32 | 128 | null {
+    for (const [key, prefix] of this.routes) {
+      if (sameIp(key, ip)) {
+        return prefix;
+      }
+    }
+    return null;
+  }
+
+  private async deleteKernel(ip: string, prefix: 32 | 128): Promise<boolean> {
+    const deleted = await run("ip", ["route", "del", `${ip}/${prefix}`, "dev", IFACE]);
+    if (deleted.code === 0 || deleted.stderr.includes("No such process")) {
+      return true;
+    }
+    console.error(`[awg] route delete failed ${ip}/${prefix}: ${deleted.stderr.trim() || deleted.code}`);
+    return false;
   }
 
   private async refreshEndpoint(force: boolean) {
@@ -375,6 +566,8 @@ export class AwgTunnel {
     }
     await run("ip", ["link", "del", IFACE]);
     this.routes.clear();
+    this.nodeBindings.clear();
+    this.dnsBinding = null;
     this.stopping = false;
   }
 }

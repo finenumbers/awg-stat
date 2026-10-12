@@ -20,6 +20,11 @@ import { assertAwgTcp, syncAwgRoutes } from "@/server/services/awg-client.servic
 import { CollectorError, onboardExistingServer } from "@/server/services/collector.service";
 import { getServerSecret, writeServerCredential } from "@/server/services/identity.service";
 
+function logAwgSyncFailure(error: unknown) {
+  const message = error instanceof Error && error.message ? error.message : "ошибка AWG";
+  console.error(`[server] awg sync failed: ${message}`);
+}
+
 export type TrafficWindowId = "30m" | "24h" | "30d";
 
 export type TrafficWindowView = {
@@ -178,7 +183,7 @@ export async function createAndOnboardServer(
     try {
       await assertAwgTcp(input.server.host, input.server.port);
     } catch (error) {
-      await syncAwgRoutes().catch(() => undefined);
+      await syncAwgRoutes().catch(logAwgSyncFailure);
       throw error;
     }
   }
@@ -212,12 +217,12 @@ export async function createAndOnboardServer(
     await onboardExistingServer(server.id, userId);
   } catch (error) {
     await db.server.delete({ where: { id: server.id } });
-    await syncAwgRoutes().catch(() => undefined);
+    await syncAwgRoutes().catch(logAwgSyncFailure);
     const message = error instanceof CollectorError ? error.message : "Не удалось подключиться к существующему AmneziaVPN";
     throw new Error(message);
   }
   if (input.kind === "ssh" && input.server.accessViaAwg) {
-    await syncAwgRoutes().catch(() => undefined);
+    await syncAwgRoutes().catch(logAwgSyncFailure);
   }
 
   await createAuditEvent({
@@ -319,7 +324,7 @@ export async function deleteServer(id: string, userId: string): Promise<{ name: 
   });
 
   if (snapshot.accessViaAwg) {
-    await syncAwgRoutes().catch(() => undefined);
+    await syncAwgRoutes().catch(logAwgSyncFailure);
   }
 
   return { name: snapshot.name };
@@ -385,7 +390,7 @@ export async function updateServerAccess(serverId: string, input: ServerAccessIn
       metadata: { host: input.host, port: input.port, accessViaAwg: input.accessViaAwg },
     });
   } finally {
-    await syncAwgRoutes().catch(() => undefined);
+    await syncAwgRoutes().catch(logAwgSyncFailure);
   }
 }
 

@@ -1,10 +1,12 @@
 import { AWG_HANDSHAKE_FRESH_SEC, hashAwgConf, normalizeAwgConf, parseAwgConf } from "@/lib/awg/conf";
 import type { AwgNavState } from "@/lib/awg/nav-state";
+import { presentAwgRoutes, type AwgRouteListState } from "@/lib/awg/routes";
 import {
   applyAwgAgentConf,
   awgAgentConfigured,
   checkAwgTcp,
   clearAwgAgent,
+  fetchAwgRoutes,
   fetchAwgStatus,
   replaceAwgRoutes,
   type AwgStatus,
@@ -47,9 +49,9 @@ export async function getAwgClientView(): Promise<{
   applyError: string | null;
   updatedAt: Date | null;
   status: AwgStatus | null;
+  routes: AwgRouteListState | null;
 }> {
   const row = await db.awgClientConfig.findUnique({ where: { id: "default" } });
-  const status = row ? await fetchAwgStatus(1500) : null;
   if (!row) {
     return {
       configured: false,
@@ -59,9 +61,16 @@ export async function getAwgClientView(): Promise<{
       peerPublicKey: null,
       applyError: null,
       updatedAt: null,
-      status,
+      status: null,
+      routes: null,
     };
   }
+  try {
+    await syncAwgRoutes();
+  } catch (error) {
+    console.error(`[awg] sync before route list failed: ${errorText(error, "ошибка AWG")}`);
+  }
+  const [status, listed] = await Promise.all([fetchAwgStatus(1500), fetchAwgRoutes()]);
   return {
     configured: true,
     endpointHost: row.endpointHost,
@@ -71,6 +80,7 @@ export async function getAwgClientView(): Promise<{
     applyError: row.applyError,
     updatedAt: row.updatedAt,
     status,
+    routes: presentAwgRoutes(listed),
   };
 }
 

@@ -1,5 +1,6 @@
 import { connect, type Socket } from "node:net";
 
+import { parseAwgRoutePayload, type AwgListedRoute } from "@/lib/awg/routes";
 import { isSafeProbeHost } from "@/lib/net/probe-host";
 
 export type AwgStatus = {
@@ -111,6 +112,21 @@ export async function clearAwgAgent(): Promise<void> {
   const response = await agentFetch("/v1/config", { method: "DELETE", timeoutMs: 10_000 });
   if (!response.ok && response.status !== 404) {
     throw new Error(await readError(response, "Не удалось отключить AmneziaWG"));
+  }
+}
+
+export async function fetchAwgRoutes(): Promise<{ up: boolean; routes: AwgListedRoute[] } | null> {
+  if (!awgAgentConfigured()) {
+    return null;
+  }
+  try {
+    const response = await agentFetch("/v1/routes", { timeoutMs: 8_000 });
+    if (!response.ok) {
+      return null;
+    }
+    return parseAwgRoutePayload(await response.json());
+  } catch {
+    return null;
   }
 }
 

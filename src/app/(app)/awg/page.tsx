@@ -60,6 +60,24 @@ export default async function AwgPage() {
           <dd>{view.updatedAt ? formatDateTime(view.updatedAt) : "—"}</dd>
         </dl>
       ) : null}
+      {view.configured && view.routes ? (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium">Маршруты</h2>
+          <p className="text-sm text-muted-foreground">Узлы, для которых сейчас есть маршрут через туннель.</p>
+          {view.routes.status === "unavailable" ? <p className="text-sm">Маршруты сейчас не прочитать.</p> : null}
+          {view.routes.status === "down" ? <p className="text-sm">Туннель не поднят.</p> : null}
+          {view.routes.status === "empty" ? <p className="text-sm">Нет маршрутов.</p> : null}
+          {view.routes.status === "list" ? (
+            <ul className="space-y-1 text-sm">
+              {view.routes.rows.map((route) => (
+                <li key={`${route.dns ? "dns" : "node"}:${route.host ?? ""}:${route.ip}`} className="font-mono text-xs">
+                  {route.label}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
       {error ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p>
       ) : null}
