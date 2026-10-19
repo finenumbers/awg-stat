@@ -10,10 +10,17 @@ export function blockCheckBadge(status: string | null | undefined): BlockCheckBa
   return null;
 }
 
-export function blockCheckLabel(
+export type BlockCheckLabelParts = {
+  base: string;
+  tspuVotes: number | null;
+  probeVotes: number | null;
+  emphasizeTspu: boolean;
+};
+
+export function blockCheckLabelParts(
   status: BlockCheckBadgeStatus,
   sample?: { tspuVotes?: number | null; probeVotes?: number | null },
-): string {
+): BlockCheckLabelParts {
   const base = status === "unrestricted" ? BLOCK_UNRESTRICTED_LABEL : BLOCK_BLOCKED_LABEL;
   const tspuVotes = sample?.tspuVotes;
   const probeVotes = sample?.probeVotes;
@@ -26,7 +33,18 @@ export function blockCheckLabel(
     tspuVotes < 0 ||
     tspuVotes > probeVotes
   ) {
-    return base;
+    return { base, tspuVotes: null, probeVotes: null, emphasizeTspu: false };
   }
-  return `${base} (${tspuVotes}/${probeVotes})`;
+  return { base, tspuVotes, probeVotes, emphasizeTspu: tspuVotes > 0 };
+}
+
+export function blockCheckLabel(
+  status: BlockCheckBadgeStatus,
+  sample?: { tspuVotes?: number | null; probeVotes?: number | null },
+): string {
+  const parts = blockCheckLabelParts(status, sample);
+  if (parts.tspuVotes == null || parts.probeVotes == null) {
+    return parts.base;
+  }
+  return `${parts.base} (${parts.tspuVotes}/${parts.probeVotes})`;
 }

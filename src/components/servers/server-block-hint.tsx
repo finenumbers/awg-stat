@@ -1,4 +1,4 @@
-import { blockCheckBadge, blockCheckLabel } from "@/lib/block-check/label";
+import { blockCheckBadge, blockCheckLabel, blockCheckLabelParts } from "@/lib/block-check/label";
 import { buildDetailUrl } from "@/lib/block-check/probe-stream";
 import { formatDateTime } from "@/lib/utils";
 
@@ -19,6 +19,7 @@ export function ServerBlockHint({
   if (!badge) {
     return null;
   }
+  const parts = blockCheckLabelParts(badge, { tspuVotes, probeVotes });
   const label = blockCheckLabel(badge, { tspuVotes, probeVotes });
   const title = checkedAt ? `${label} · ${formatDateTime(checkedAt)}` : label;
   return (
@@ -34,7 +35,15 @@ export function ServerBlockHint({
           : "pointer-events-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800"
       }
     >
-      {label}
+      {parts.tspuVotes == null || parts.probeVotes == null ? (
+        parts.base
+      ) : (
+        <>
+          {parts.base} (
+          {parts.emphasizeTspu ? <span className="text-red-700">{parts.tspuVotes}</span> : parts.tspuVotes}/
+          {parts.probeVotes})
+        </>
+      )}
     </a>
   );
 }
