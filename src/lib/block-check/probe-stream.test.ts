@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildDetailUrl, buildProbeUrl, consumeSseBuffer, votesFromSseEvents } from "./probe-stream";
+import {
+  buildDetailUrl,
+  buildProbeUrl,
+  consumeSseBuffer,
+  dedupeProbeVotes,
+  votesFromSseEvents,
+} from "./probe-stream";
 
 test("buildProbeUrl rejects a non-uuid id", () => {
   assert.equal(buildProbeUrl("not-a-uuid"), null);
@@ -34,6 +40,43 @@ test("consumeSseBuffer reassembles a result split across chunks", () => {
   assert.deepEqual(
     collected.votes.map((vote) => vote.verdicts),
     [["ok"], ["tspu_block"]],
+  );
+});
+
+test("consumeSseBuffer reads cheburcheck events without a space after the colon", () => {
+  const consumed = consumeSseBuffer(
+    [
+      'event:started',
+      'data:{"online_probes":1}',
+      "",
+      ":",
+      "",
+      "event:result",
+      'data:{"verdicts":["cdn_block"],"probe_id":"1","host_results":[{}]}',
+      "",
+      "event:done",
+      'data:{"status":"done"}',
+      "",
+      "",
+    ].join("\n"),
+  );
+  const collected = votesFromSseEvents(consumed.events);
+  assert.equal(consumed.rest, "");
+  assert.equal(collected.done, true);
+  assert.equal(collected.votes.length, 1);
+  assert.deepEqual(collected.votes[0]?.verdicts, ["cdn_block"]);
+  assert.equal(collected.votes[0]?.probeId, "1");
+});
+
+test("dedupeProbeVotes keeps the latest result for one probe", () => {
+  const deduped = dedupeProbeVotes([
+    { verdicts: ["tspu_block"], cdnUnblocked: false, hostResultsLength: 1, probeId: "7" },
+    { verdicts: ["ok"], cdnUnblocked: false, hostResultsLength: 1, probeId: "7" },
+    { verdicts: ["sni_block"], cdnUnblocked: false, hostResultsLength: 1, probeId: null },
+  ]);
+  assert.deepEqual(
+    deduped.map((vote) => vote.verdicts),
+    [["ok"], ["sni_block"]],
   );
 });
 

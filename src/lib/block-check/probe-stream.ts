@@ -1,5 +1,9 @@
 import type { ProbeVote } from "./verdict";
 
+export type SseProbeVote = ProbeVote & {
+  probeId: string | null;
+};
+
 export type SseEvent = {
   event: string;
   data: string;
@@ -62,7 +66,7 @@ export function consumeSseBuffer(buffer: string): { events: SseEvent[]; rest: st
   return { events, rest };
 }
 
-export function voteFromProbeEvent(data: string): ProbeVote | null {
+export function voteFromProbeEvent(data: string): SseProbeVote | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(data);
@@ -72,7 +76,12 @@ export function voteFromProbeEvent(data: string): ProbeVote | null {
   if (!parsed || typeof parsed !== "object") {
     return null;
   }
-  const record = parsed as { verdicts?: unknown; cdn_unblocked?: unknown; host_results?: unknown };
+  const record = parsed as {
+    verdicts?: unknown;
+    cdn_unblocked?: unknown;
+    host_results?: unknown;
+    probe_id?: unknown;
+  };
   if (!Array.isArray(record.verdicts)) {
     return null;
   }
@@ -82,13 +91,37 @@ export function voteFromProbeEvent(data: string): ProbeVote | null {
     verdicts,
     cdnUnblocked: record.cdn_unblocked === true,
     hostResultsLength,
+    probeId: typeof record.probe_id === "string" && record.probe_id.length > 0 ? record.probe_id : null,
   };
 }
 
-export function votesFromSseEvents(events: SseEvent[]): { votes: ProbeVote[]; done: boolean } {
-  const votes: ProbeVote[] = [];
+/** Last result for a probe replaces the earlier one. Votes without a probe id stay separate. */
+export function dedupeProbeVotes(votes: SseProbeVote[]): SseProbeVote[] {
+  const deduped: SseProbeVote[] = [];
+  const indexByProbe = new Map<string, number>();
+  for (const vote of votes) {
+    if (!vote.probeId) {
+      deduped.push(vote);
+      continue;
+    }
+    const existing = indexByProbe.get(vote.probeId);
+    if (existing == null) {
+      indexByProbe.set(vote.probeId, deduped.length);
+      deduped.push(vote);
+      continue;
+    }
+    deduped[existing] = vote;
+  }
+  return deduped;
+}
+
+export function votesFromSseEvents(events: SseEvent[]): { votes: SseProbeVote[]; done: boolean } {
+  const votes: SseProbeVote[] = [];
   let done = false;
   for (const event of events) {
+    if (done) {
+      break;
+    }
     if (event.event === "result") {
       const vote = voteFromProbeEvent(event.data);
       if (vote) {

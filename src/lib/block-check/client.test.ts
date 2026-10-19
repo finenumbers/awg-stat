@@ -84,6 +84,82 @@ test("queryCheburcheck turns a static CDN ok vote into blocked", async () => {
   assert.equal(outcome.status, "blocked");
 });
 
+test("queryCheburcheck treats cdn_block as unrestricted when the host is not a CDN", async () => {
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: false, id: PROBE_ID, cdn_providers: {} });
+      }
+      return sseResponse(
+        'event:result\ndata:{"verdicts":["cdn_block"],"probe_id":"1","host_results":[{}]}\n\nevent:done\ndata:{}\n\n',
+      );
+    },
+  });
+  assert.equal(outcome.kind, "verdict");
+  assert.equal(outcome.status, "unrestricted");
+  assert.equal(outcome.summary, "ok=1");
+});
+
+test("queryCheburcheck keeps a partial tspu vote when the probe never finishes", async () => {
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: true, id: PROBE_ID });
+      }
+      return sseResponse(
+        'event:result\ndata:{"verdicts":["tspu_block"],"probe_id":"1","host_results":[{}]}\n\n',
+      );
+    },
+  });
+  assert.equal(outcome.kind, "keep");
+  assert.equal(outcome.status, null);
+});
+
+test("queryCheburcheck keeps the latest vote when one probe reports twice", async () => {
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: false, id: PROBE_ID });
+      }
+      return sseResponse(
+        [
+          "event:result",
+          'data:{"verdicts":["tspu_block"],"probe_id":"7","host_results":[{}]}',
+          "",
+          "event:result",
+          'data:{"verdicts":["ok"],"probe_id":"7","host_results":[{}]}',
+          "",
+          "event:done",
+          "data:{}",
+          "",
+          "",
+        ].join("\n"),
+      );
+    },
+  });
+  assert.equal(outcome.kind, "verdict");
+  assert.equal(outcome.status, "unrestricted");
+  assert.equal(outcome.summary, "ok=1");
+});
+
+test("queryCheburcheck marks a registry block when the probe request fails", async () => {
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: true, id: PROBE_ID });
+      }
+      return sseResponse("nope", 503);
+    },
+  });
+  assert.equal(outcome.kind, "verdict");
+  assert.equal(outcome.status, "blocked");
+  assert.equal(outcome.statusCode, 503);
+});
+
 test("queryCheburcheck keeps a non-200 check", async () => {
   const outcome = await queryCheburcheck("vpn.example.com", {
     fetchImpl: async () => jsonResponse({ error: "nope" }, 400),

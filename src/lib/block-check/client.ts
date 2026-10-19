@@ -1,6 +1,13 @@
-import { consumeSseBuffer, votesFromSseEvents, buildCheckUrl, buildProbeUrl } from "./probe-stream";
+import {
+  buildCheckUrl,
+  buildProbeUrl,
+  consumeSseBuffer,
+  dedupeProbeVotes,
+  votesFromSseEvents,
+  type SseProbeVote,
+} from "./probe-stream";
 import { BLOCK_CHECK_PROBE_TIMEOUT_MS } from "./schedule";
-import { resolveBadgeStatus, type ProbeVote } from "./verdict";
+import { formatDisplayedVoteSummary, resolveBadgeStatus, type ProbeVote } from "./verdict";
 
 const CHECK_TIMEOUT_MS = 15_000;
 const MAX_BODY_BYTES = 1_000_000;
@@ -11,6 +18,7 @@ export type CheckOutcome = {
   status: "unrestricted" | "blocked" | null;
   statusCode: number | null;
   durationMs: number;
+  summary: string;
 };
 
 type CheckBody = {
@@ -90,9 +98,10 @@ async function readProbeVotes(
   url: string,
   fetchImpl: typeof fetch,
   signal?: AbortSignal,
-): Promise<{ votes: ProbeVote[]; failed: boolean; statusCode: number | null }> {
-  const votes: ProbeVote[] = [];
+): Promise<{ votes: SseProbeVote[]; failed: boolean; done: boolean; statusCode: number | null }> {
+  const votes: SseProbeVote[] = [];
   let statusCode: number | null = null;
+  const unfinished = (failed: boolean) => ({ votes, failed, done: false, statusCode });
   try {
     const response = await fetchImpl(url, {
       method: "GET",
@@ -106,7 +115,7 @@ async function readProbeVotes(
     });
     statusCode = response.status;
     if (response.status !== 200 || !response.body) {
-      return { votes, failed: true, statusCode };
+      return unfinished(true);
     }
 
     const reader = response.body.getReader();
@@ -116,7 +125,7 @@ async function readProbeVotes(
     try {
       while (true) {
         if (signal?.aborted) {
-          return { votes, failed: votes.length === 0, statusCode };
+          return unfinished(votes.length === 0);
         }
         const { done, value } = await reader.read();
         if (done) {
@@ -132,16 +141,16 @@ async function readProbeVotes(
         const parsed = votesFromSseEvents(consumed.events);
         votes.push(...parsed.votes);
         if (parsed.done) {
-          return { votes, failed: false, statusCode };
+          return { votes, failed: false, done: true, statusCode };
         }
       }
     } finally {
       await reader.cancel().catch(() => undefined);
     }
 
-    return { votes, failed: votes.length === 0, statusCode };
+    return unfinished(votes.length === 0);
   } catch {
-    return { votes, failed: true, statusCode };
+    return unfinished(true);
   }
 }
 
@@ -153,11 +162,16 @@ export async function queryCheburcheck(
   const started = Date.now();
   let statusCode: number | null = null;
 
-  const finish = (kind: CheckOutcome["kind"], status: CheckOutcome["status"]): CheckOutcome => ({
+  const finish = (
+    kind: CheckOutcome["kind"],
+    status: CheckOutcome["status"],
+    summary = "",
+  ): CheckOutcome => ({
     kind,
     status,
     statusCode,
     durationMs: Date.now() - started,
+    summary,
   });
 
   if (options.signal?.aborted) {
@@ -201,10 +215,13 @@ export async function queryCheburcheck(
       }
       const probe = await readProbeVotes(probeUrl, fetchImpl, options.signal);
       statusCode = probe.statusCode ?? statusCode;
+      if (!probe.done && probe.votes.length > 0) {
+        return finish("keep", null);
+      }
       if (probe.failed && probe.votes.length === 0 && !parsed.registryBlocked) {
         return finish("keep", null);
       }
-      votes = probe.votes;
+      votes = probe.done ? dedupeProbeVotes(probe.votes) : probe.votes;
     }
 
     const status = resolveBadgeStatus({
@@ -215,7 +232,7 @@ export async function queryCheburcheck(
     if (status === "unknown") {
       return finish("keep", null);
     }
-    return finish("verdict", status);
+    return finish("verdict", status, formatDisplayedVoteSummary(votes, parsed.isStaticCdn));
   } catch {
     return finish("keep", null);
   }

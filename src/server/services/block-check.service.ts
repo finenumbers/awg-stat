@@ -135,8 +135,9 @@ async function checkHost(
 
   if (outcome.kind === "verdict" && outcome.status) {
     await persistVerdict(idsForHost(servers, host), outcome.status, new Date(next.checkedAt ?? Date.now()));
+    const votes = outcome.summary ? ` votes=${outcome.summary}` : "";
     console.info(
-      `[block-check] host=${host} verdict=${outcome.status} status=${outcome.statusCode} durationMs=${outcome.durationMs}`,
+      `[block-check] host=${host} verdict=${outcome.status} status=${outcome.statusCode} durationMs=${outcome.durationMs}${votes}`,
     );
     return { statusCode: outcome.statusCode, kind: "verdict" };
   }

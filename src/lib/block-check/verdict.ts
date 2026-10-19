@@ -28,6 +28,10 @@ function displayVerdicts(vote: ProbeVote, isStaticCdn: boolean): DisplayVerdict[
     if (!isDisplayVerdict(verdict)) {
       continue;
     }
+    if (verdict === "cdn_block" && !isStaticCdn) {
+      displayed.push("ok");
+      continue;
+    }
     if (
       isStaticCdn &&
       !vote.cdnUnblocked &&
@@ -42,6 +46,26 @@ function displayVerdicts(vote: ProbeVote, isStaticCdn: boolean): DisplayVerdict[
   return displayed;
 }
 
+function chosenDisplayVerdict(vote: ProbeVote, isStaticCdn: boolean): DisplayVerdict | null {
+  return VERDICT_PRIORITY.find((candidate) => displayVerdicts(vote, isStaticCdn).includes(candidate)) ?? null;
+}
+
+/** Counts after CDN remapping, in display priority order. Empty when no vote is usable. */
+export function formatDisplayedVoteSummary(votes: ProbeVote[], isStaticCdn: boolean): string {
+  const counts = new Map<DisplayVerdict, number>();
+  for (const vote of votes) {
+    const chosen = chosenDisplayVerdict(vote, isStaticCdn);
+    if (!chosen) {
+      continue;
+    }
+    counts.set(chosen, (counts.get(chosen) ?? 0) + 1);
+  }
+  return VERDICT_PRIORITY.flatMap((verdict) => {
+    const count = counts.get(verdict) ?? 0;
+    return count > 0 ? [`${verdict}=${count}`] : [];
+  }).join(" ");
+}
+
 /** Majority of scanner votes. Equal counts keep the earlier, stricter verdict. */
 export function selectProbeVerdict(votes: ProbeVote[], isStaticCdn: boolean): DisplayVerdict | null {
   if (votes.length === 0) {
@@ -50,8 +74,7 @@ export function selectProbeVerdict(votes: ProbeVote[], isStaticCdn: boolean): Di
 
   const counts = new Map<DisplayVerdict, number>();
   for (const vote of votes) {
-    const displayed = displayVerdicts(vote, isStaticCdn);
-    const chosen = VERDICT_PRIORITY.find((candidate) => displayed.includes(candidate));
+    const chosen = chosenDisplayVerdict(vote, isStaticCdn);
     if (!chosen) {
       continue;
     }
