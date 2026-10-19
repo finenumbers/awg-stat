@@ -10,6 +10,23 @@ export function blockCheckBadge(status: string | null | undefined): BlockCheckBa
   return null;
 }
 
-export function blockCheckLabel(status: BlockCheckBadgeStatus): string {
-  return status === "unrestricted" ? BLOCK_UNRESTRICTED_LABEL : BLOCK_BLOCKED_LABEL;
+export function blockCheckLabel(
+  status: BlockCheckBadgeStatus,
+  sample?: { tspuVotes?: number | null; probeVotes?: number | null },
+): string {
+  const base = status === "unrestricted" ? BLOCK_UNRESTRICTED_LABEL : BLOCK_BLOCKED_LABEL;
+  const tspuVotes = sample?.tspuVotes;
+  const probeVotes = sample?.probeVotes;
+  if (
+    tspuVotes == null ||
+    probeVotes == null ||
+    !Number.isInteger(tspuVotes) ||
+    !Number.isInteger(probeVotes) ||
+    probeVotes <= 0 ||
+    tspuVotes < 0 ||
+    tspuVotes > probeVotes
+  ) {
+    return base;
+  }
+  return `${base} (${tspuVotes}/${probeVotes})`;
 }

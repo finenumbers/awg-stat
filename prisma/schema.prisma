@@ -181,6 +181,10 @@ model Server {
   lastIcmpAt            DateTime?
   lastBlockStatus       BlockCheckStatus?
   lastBlockCheckedAt    DateTime?
+  /// Scanners whose displayed verdict is tspu_block. Null until a probe with votes finishes.
+  lastBlockTspuVotes    Int?
+  /// Scanner results in that same probe, including uncertain. Null when the fraction is unknown.
+  lastBlockProbeVotes   Int?
   accessViaAwg          Boolean      @default(false)
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt

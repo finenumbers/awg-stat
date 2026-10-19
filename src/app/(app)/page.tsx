@@ -186,6 +186,8 @@ export default async function OverviewPage() {
                                 status={server.lastBlockStatus}
                                 host={server.host}
                                 checkedAt={server.lastBlockCheckedAt}
+                                tspuVotes={server.lastBlockTspuVotes}
+                                probeVotes={server.lastBlockProbeVotes}
                               />
                             </>
                           ) : null}

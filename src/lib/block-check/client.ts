@@ -7,7 +7,13 @@ import {
   type SseProbeVote,
 } from "./probe-stream";
 import { BLOCK_CHECK_PROBE_TIMEOUT_MS } from "./schedule";
-import { formatDisplayedVoteSummary, resolveBadgeStatus, type ProbeVote } from "./verdict";
+import {
+  finishedProbeTotal,
+  formatDisplayedVoteSummary,
+  resolveBadgeStatus,
+  tspuVoteSample,
+  type ProbeVote,
+} from "./verdict";
 
 const CHECK_TIMEOUT_MS = 15_000;
 const MAX_BODY_BYTES = 1_000_000;
@@ -19,6 +25,8 @@ export type CheckOutcome = {
   statusCode: number | null;
   durationMs: number;
   summary: string;
+  tspuVotes: number | null;
+  probeVotes: number | null;
 };
 
 type CheckBody = {
@@ -98,10 +106,22 @@ async function readProbeVotes(
   url: string,
   fetchImpl: typeof fetch,
   signal?: AbortSignal,
-): Promise<{ votes: SseProbeVote[]; failed: boolean; done: boolean; statusCode: number | null }> {
+): Promise<{
+  votes: SseProbeVote[];
+  failed: boolean;
+  done: boolean;
+  statusCode: number | null;
+  responseCount: number | null;
+}> {
   const votes: SseProbeVote[] = [];
   let statusCode: number | null = null;
-  const unfinished = (failed: boolean) => ({ votes, failed, done: false, statusCode });
+  const unfinished = (failed: boolean) => ({
+    votes,
+    failed,
+    done: false,
+    statusCode,
+    responseCount: null,
+  });
   try {
     const response = await fetchImpl(url, {
       method: "GET",
@@ -141,7 +161,7 @@ async function readProbeVotes(
         const parsed = votesFromSseEvents(consumed.events);
         votes.push(...parsed.votes);
         if (parsed.done) {
-          return { votes, failed: false, done: true, statusCode };
+          return { votes, failed: false, done: true, statusCode, responseCount: parsed.responseCount };
         }
       }
     } finally {
@@ -165,13 +185,15 @@ export async function queryCheburcheck(
   const finish = (
     kind: CheckOutcome["kind"],
     status: CheckOutcome["status"],
-    summary = "",
+    sample: { summary?: string; tspuVotes?: number | null; probeVotes?: number | null } = {},
   ): CheckOutcome => ({
     kind,
     status,
     statusCode,
     durationMs: Date.now() - started,
-    summary,
+    summary: sample.summary ?? "",
+    tspuVotes: sample.tspuVotes ?? null,
+    probeVotes: sample.probeVotes ?? null,
   });
 
   if (options.signal?.aborted) {
@@ -204,6 +226,7 @@ export async function queryCheburcheck(
     }
 
     let votes: ProbeVote[] = [];
+    let responseCount: number | null = null;
     const probeUrl = parsed.id ? buildProbeUrl(parsed.id) : null;
     if (probeUrl) {
       if (options.signal?.aborted) {
@@ -222,6 +245,7 @@ export async function queryCheburcheck(
         return finish("keep", null);
       }
       votes = probe.done ? dedupeProbeVotes(probe.votes) : probe.votes;
+      responseCount = probe.done ? probe.responseCount : null;
     }
 
     const status = resolveBadgeStatus({
@@ -232,7 +256,12 @@ export async function queryCheburcheck(
     if (status === "unknown") {
       return finish("keep", null);
     }
-    return finish("verdict", status, formatDisplayedVoteSummary(votes, parsed.isStaticCdn));
+    const sample = tspuVoteSample(votes, parsed.isStaticCdn);
+    return finish("verdict", status, {
+      summary: formatDisplayedVoteSummary(votes, parsed.isStaticCdn),
+      tspuVotes: sample?.tspuVotes ?? null,
+      probeVotes: sample ? finishedProbeTotal(sample.probeVotes, responseCount) : null,
+    });
   } catch {
     return finish("keep", null);
   }

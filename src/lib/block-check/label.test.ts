@@ -16,3 +16,10 @@ test("blockCheckLabel matches the dashboard copy", () => {
   assert.equal(blockCheckLabel("unrestricted"), BLOCK_UNRESTRICTED_LABEL);
   assert.equal(blockCheckLabel("blocked"), BLOCK_BLOCKED_LABEL);
 });
+
+test("blockCheckLabel appends the TSPU scanner fraction", () => {
+  assert.equal(blockCheckLabel("unrestricted", { tspuVotes: 0, probeVotes: 31 }), "Не ограничен (0/31)");
+  assert.equal(blockCheckLabel("blocked", { tspuVotes: 16, probeVotes: 31 }), "Заблокирован (16/31)");
+  assert.equal(blockCheckLabel("unrestricted", { tspuVotes: null, probeVotes: null }), BLOCK_UNRESTRICTED_LABEL);
+  assert.equal(blockCheckLabel("blocked", { tspuVotes: 2, probeVotes: 1 }), BLOCK_BLOCKED_LABEL);
+});

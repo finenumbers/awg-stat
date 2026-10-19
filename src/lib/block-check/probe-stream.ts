@@ -115,9 +115,28 @@ export function dedupeProbeVotes(votes: SseProbeVote[]): SseProbeVote[] {
   return deduped;
 }
 
-export function votesFromSseEvents(events: SseEvent[]): { votes: SseProbeVote[]; done: boolean } {
+export function responseCountFromDone(data: string): number | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+  const value = (parsed as { response_count?: unknown }).response_count;
+  return typeof value === "number" ? value : null;
+}
+
+export function votesFromSseEvents(events: SseEvent[]): {
+  votes: SseProbeVote[];
+  done: boolean;
+  responseCount: number | null;
+} {
   const votes: SseProbeVote[] = [];
   let done = false;
+  let responseCount: number | null = null;
   for (const event of events) {
     if (done) {
       break;
@@ -130,7 +149,8 @@ export function votesFromSseEvents(events: SseEvent[]): { votes: SseProbeVote[];
     }
     if (event.event === "done") {
       done = true;
+      responseCount = responseCountFromDone(event.data);
     }
   }
-  return { votes, done };
+  return { votes, done, responseCount };
 }

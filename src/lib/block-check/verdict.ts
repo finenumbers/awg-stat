@@ -50,6 +50,39 @@ function chosenDisplayVerdict(vote: ProbeVote, isStaticCdn: boolean): DisplayVer
   return VERDICT_PRIORITY.find((candidate) => displayVerdicts(vote, isStaticCdn).includes(candidate)) ?? null;
 }
 
+const MAX_PROBE_VOTES = 1000;
+
+/** Size of this finished probe. response_count wins only when it covers every parsed vote. */
+export function finishedProbeTotal(voteCount: number, responseCount: number | null): number {
+  if (
+    responseCount != null &&
+    Number.isInteger(responseCount) &&
+    responseCount >= 1 &&
+    responseCount <= MAX_PROBE_VOTES &&
+    responseCount >= voteCount
+  ) {
+    return responseCount;
+  }
+  return voteCount;
+}
+
+/** TSPU-blocking scanners over every scanner result in the finished probe. */
+export function tspuVoteSample(
+  votes: ProbeVote[],
+  isStaticCdn: boolean,
+): { tspuVotes: number; probeVotes: number } | null {
+  if (votes.length === 0) {
+    return null;
+  }
+  let tspuVotes = 0;
+  for (const vote of votes) {
+    if (chosenDisplayVerdict(vote, isStaticCdn) === "tspu_block") {
+      tspuVotes += 1;
+    }
+  }
+  return { tspuVotes, probeVotes: votes.length };
+}
+
 /** Counts after CDN remapping, in display priority order. Empty when no vote is usable. */
 export function formatDisplayedVoteSummary(votes: ProbeVote[], isStaticCdn: boolean): string {
   const counts = new Map<DisplayVerdict, number>();

@@ -68,6 +68,16 @@ test("consumeSseBuffer reads cheburcheck events without a space after the colon"
   assert.equal(collected.votes[0]?.probeId, "1");
 });
 
+test("votesFromSseEvents reads response_count from done and ignores online_probes", () => {
+  const consumed = consumeSseBuffer(
+    'event:done\ndata:{"response_count":18,"online_probes":31,"status":"done"}\n\n',
+  );
+  const collected = votesFromSseEvents(consumed.events);
+  assert.equal(collected.done, true);
+  assert.equal(collected.responseCount, 18);
+  assert.equal(collected.votes.length, 0);
+});
+
 test("dedupeProbeVotes keeps the latest result for one probe", () => {
   const deduped = dedupeProbeVotes([
     { verdicts: ["tspu_block"], cdnUnblocked: false, hostResultsLength: 1, probeId: "7" },

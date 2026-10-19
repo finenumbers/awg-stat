@@ -90,13 +90,19 @@ async function persistVerdict(
   ids: string[],
   status: "unrestricted" | "blocked",
   at: Date,
+  sample: { tspuVotes: number | null; probeVotes: number | null },
 ): Promise<void> {
   if (ids.length === 0) {
     return;
   }
   await db.server.updateMany({
     where: { id: { in: ids } },
-    data: { lastBlockStatus: status, lastBlockCheckedAt: at },
+    data: {
+      lastBlockStatus: status,
+      lastBlockCheckedAt: at,
+      lastBlockTspuVotes: sample.tspuVotes,
+      lastBlockProbeVotes: sample.probeVotes,
+    },
   });
 }
 
@@ -134,10 +140,17 @@ async function checkHost(
   state.hosts.set(host, next);
 
   if (outcome.kind === "verdict" && outcome.status) {
-    await persistVerdict(idsForHost(servers, host), outcome.status, new Date(next.checkedAt ?? Date.now()));
+    await persistVerdict(idsForHost(servers, host), outcome.status, new Date(next.checkedAt ?? Date.now()), {
+      tspuVotes: outcome.tspuVotes,
+      probeVotes: outcome.probeVotes,
+    });
     const votes = outcome.summary ? ` votes=${outcome.summary}` : "";
+    const sample =
+      outcome.tspuVotes != null && outcome.probeVotes != null
+        ? ` sample=${outcome.tspuVotes}/${outcome.probeVotes}`
+        : "";
     console.info(
-      `[block-check] host=${host} verdict=${outcome.status} status=${outcome.statusCode} durationMs=${outcome.durationMs}${votes}`,
+      `[block-check] host=${host} verdict=${outcome.status} status=${outcome.statusCode} durationMs=${outcome.durationMs}${votes}${sample}`,
     );
     return { statusCode: outcome.statusCode, kind: "verdict" };
   }

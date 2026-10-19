@@ -6,16 +6,20 @@ export function ServerBlockHint({
   status,
   host,
   checkedAt,
+  tspuVotes,
+  probeVotes,
 }: {
   status: string | null | undefined;
   host: string;
   checkedAt?: Date | null;
+  tspuVotes?: number | null;
+  probeVotes?: number | null;
 }) {
   const badge = blockCheckBadge(status);
   if (!badge) {
     return null;
   }
-  const label = blockCheckLabel(badge);
+  const label = blockCheckLabel(badge, { tspuVotes, probeVotes });
   const title = checkedAt ? `${label} · ${formatDateTime(checkedAt)}` : label;
   return (
     <a

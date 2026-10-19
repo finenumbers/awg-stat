@@ -19,6 +19,38 @@ function sseResponse(body: string, status = 200): Response {
   });
 }
 
+function sseChunks(parts: string[]): Response {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const part of parts) {
+          controller.enqueue(encoder.encode(part));
+        }
+        controller.close();
+      },
+    }),
+    { status: 200, headers: { "Content-Type": "text/event-stream" } },
+  );
+}
+
+function probeEvents(count: number, tspu: number, responseCount: number, onlineProbes: number): string {
+  const blocks: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    blocks.push(
+      `event:result\ndata:${JSON.stringify({
+        verdicts: [index < tspu ? "tspu_block" : "ok"],
+        probe_id: String(index + 1),
+        host_results: [{}],
+      })}\n\n`,
+    );
+  }
+  blocks.push(
+    `event:done\ndata:${JSON.stringify({ response_count: responseCount, online_probes: onlineProbes })}\n\n`,
+  );
+  return blocks.join("");
+}
+
 test("queryCheburcheck marks registry-blocked without a probe as blocked", async () => {
   const outcome = await queryCheburcheck("vpn.example.com", {
     fetchImpl: async () => jsonResponse({ blocked: true }),
@@ -26,6 +58,8 @@ test("queryCheburcheck marks registry-blocked without a probe as blocked", async
   assert.equal(outcome.kind, "verdict");
   assert.equal(outcome.status, "blocked");
   assert.equal(outcome.statusCode, 200);
+  assert.equal(outcome.tspuVotes, null);
+  assert.equal(outcome.probeVotes, null);
 });
 
 test("queryCheburcheck keeps an unrestricted registry without scanner votes", async () => {
@@ -99,6 +133,8 @@ test("queryCheburcheck treats cdn_block as unrestricted when the host is not a C
   assert.equal(outcome.kind, "verdict");
   assert.equal(outcome.status, "unrestricted");
   assert.equal(outcome.summary, "ok=1");
+  assert.equal(outcome.tspuVotes, 0);
+  assert.equal(outcome.probeVotes, 1);
 });
 
 test("queryCheburcheck keeps a partial tspu vote when the probe never finishes", async () => {
@@ -115,6 +151,8 @@ test("queryCheburcheck keeps a partial tspu vote when the probe never finishes",
   });
   assert.equal(outcome.kind, "keep");
   assert.equal(outcome.status, null);
+  assert.equal(outcome.tspuVotes, null);
+  assert.equal(outcome.probeVotes, null);
 });
 
 test("queryCheburcheck keeps the latest vote when one probe reports twice", async () => {
@@ -143,6 +181,8 @@ test("queryCheburcheck keeps the latest vote when one probe reports twice", asyn
   assert.equal(outcome.kind, "verdict");
   assert.equal(outcome.status, "unrestricted");
   assert.equal(outcome.summary, "ok=1");
+  assert.equal(outcome.tspuVotes, 0);
+  assert.equal(outcome.probeVotes, 1);
 });
 
 test("queryCheburcheck marks a registry block when the probe request fails", async () => {
@@ -158,6 +198,62 @@ test("queryCheburcheck marks a registry block when the probe request fails", asy
   assert.equal(outcome.kind, "verdict");
   assert.equal(outcome.status, "blocked");
   assert.equal(outcome.statusCode, 503);
+  assert.equal(outcome.tspuVotes, null);
+  assert.equal(outcome.probeVotes, null);
+});
+
+test("queryCheburcheck sizes the TSPU fraction from this probe's response_count", async () => {
+  const check = (body: string) =>
+    queryCheburcheck("vpn.example.com", {
+      fetchImpl: async (input) => {
+        const url = String(input);
+        if (url.includes("/api/v1/check")) {
+          return jsonResponse({ blocked: false, id: PROBE_ID });
+        }
+        return sseResponse(body);
+      },
+    });
+
+  const smaller = await check(probeEvents(18, 0, 18, 31));
+  assert.equal(smaller.status, "unrestricted");
+  assert.equal(smaller.tspuVotes, 0);
+  assert.equal(smaller.probeVotes, 18);
+
+  const larger = await check(probeEvents(25, 2, 25, 40));
+  assert.equal(larger.status, "unrestricted");
+  assert.equal(larger.tspuVotes, 2);
+  assert.equal(larger.probeVotes, 25);
+});
+
+test("queryCheburcheck reads response_count from a done chunk that follows the votes", async () => {
+  const votes = probeEvents(18, 0, 18, 31);
+  const split = votes.lastIndexOf("event:done");
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: false, id: PROBE_ID });
+      }
+      return sseChunks([votes.slice(0, split), votes.slice(split)]);
+    },
+  });
+  assert.equal(outcome.status, "unrestricted");
+  assert.equal(outcome.tspuVotes, 0);
+  assert.equal(outcome.probeVotes, 18);
+});
+
+test("queryCheburcheck ignores a response_count smaller than the parsed votes", async () => {
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: false, id: PROBE_ID });
+      }
+      return sseResponse(probeEvents(5, 1, 3, 31));
+    },
+  });
+  assert.equal(outcome.tspuVotes, 1);
+  assert.equal(outcome.probeVotes, 5);
 });
 
 test("queryCheburcheck keeps a non-200 check", async () => {

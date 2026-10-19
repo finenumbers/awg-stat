@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { formatDisplayedVoteSummary, resolveBadgeStatus, selectProbeVerdict, type ProbeVote } from "./verdict";
+import {
+  finishedProbeTotal,
+  formatDisplayedVoteSummary,
+  resolveBadgeStatus,
+  selectProbeVerdict,
+  tspuVoteSample,
+  type ProbeVote,
+} from "./verdict";
 
 function vote(verdicts: string[], extras: Partial<ProbeVote> = {}): ProbeVote {
   return {
@@ -85,6 +92,15 @@ function repeated(verdicts: string[], count: number): ProbeVote[] {
   return Array.from({ length: count }, () => vote(verdicts));
 }
 
+test("finishedProbeTotal uses this probe's response_count and ignores a smaller or huge one", () => {
+  assert.equal(finishedProbeTotal(18, 18), 18);
+  assert.equal(finishedProbeTotal(25, 25), 25);
+  assert.equal(finishedProbeTotal(5, 3), 5);
+  assert.equal(finishedProbeTotal(5, 18.5), 5);
+  assert.equal(finishedProbeTotal(5, 1001), 5);
+  assert.equal(finishedProbeTotal(5, null), 5);
+});
+
 test("resolveBadgeStatus treats cdn_block on an ordinary domain as unrestricted", () => {
   const austria = [
     ...repeated(["cdn_block"], 23),
@@ -96,6 +112,7 @@ test("resolveBadgeStatus treats cdn_block on an ordinary domain as unrestricted"
     "unrestricted",
   );
   assert.equal(formatDisplayedVoteSummary(austria, false), "ok=30 uncertain=1");
+  assert.deepEqual(tspuVoteSample(austria, false), { tspuVotes: 0, probeVotes: 31 });
 
   const hongKong = [
     ...repeated(["cdn_block"], 21),
@@ -112,6 +129,7 @@ test("resolveBadgeStatus treats cdn_block on an ordinary domain as unrestricted"
     "unrestricted",
   );
   assert.equal(formatDisplayedVoteSummary(hongKong, false), "tspu_block=2 ok=27 uncertain=2");
+  assert.deepEqual(tspuVoteSample(hongKong, false), { tspuVotes: 2, probeVotes: 31 });
 
   const latvia = [
     ...repeated(["cdn_block"], 23),
