@@ -18,10 +18,11 @@ import {
 
 const now = 1_000_000;
 
-test("isHostDue waits five minutes after a successful check", () => {
+test("isHostDue waits fifteen minutes after a successful check", () => {
   const fresh = applyObservation(undefined, { kind: "status", status: "blocked" }, now);
   assert.equal(isHostDue(fresh, now + BLOCK_CHECK_INTERVAL_MS - 1), false);
   assert.equal(isHostDue(fresh, now + BLOCK_CHECK_INTERVAL_MS), true);
+  assert.ok(BLOCK_CHECK_INTERVAL_MS > BLOCK_CHECK_RATE_LIMIT_BACKOFF_MS);
 });
 
 test("applyObservation keeps the previous verdict and backs off", () => {

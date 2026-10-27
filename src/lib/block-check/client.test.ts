@@ -188,8 +188,27 @@ test("queryCheburcheck keeps a partial tspu vote when the probe never finishes",
   });
   assert.equal(outcome.kind, "keep");
   assert.equal(outcome.status, null);
+  assert.equal(outcome.summary, "probe-incomplete");
   assert.equal(outcome.tspuVotes, null);
   assert.equal(outcome.probeVotes, null);
+});
+
+test("queryCheburcheck accepts a done event that arrives without a trailing blank line", async () => {
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: false, id: PROBE_ID });
+      }
+      return sseResponse(
+        'event:result\ndata:{"verdicts":["tspu_block"],"probe_id":"1","host_results":[{}]}\n\nevent:done\ndata:{"response_count":1,"online_probes":31}',
+      );
+    },
+  });
+  assert.equal(outcome.kind, "verdict");
+  assert.equal(outcome.status, "blocked");
+  assert.equal(outcome.tspuVotes, 1);
+  assert.equal(outcome.probeVotes, 1);
 });
 
 test("queryCheburcheck keeps the latest vote when one probe reports twice", async () => {

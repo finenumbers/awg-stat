@@ -143,6 +143,27 @@ test("resolveBadgeStatus treats cdn_block on an ordinary domain as unrestricted"
   );
 });
 
+test("resolveBadgeStatus counts TSPU when the same scanner also reports a CDN block", () => {
+  const unitedKingdom = [
+    ...repeated(["tspu_block", "cdn_block"], 17),
+    ...repeated(["tspu_block"], 4),
+    ...repeated(["cdn_block"], 6),
+    ...repeated(["ok"], 2),
+    ...repeated(["uncertain"], 2),
+  ];
+  assert.equal(unitedKingdom.length, 31);
+  assert.equal(
+    resolveBadgeStatus({ registryBlocked: false, isStaticCdn: false, votes: unitedKingdom }),
+    "blocked",
+  );
+  assert.equal(
+    formatDisplayedVoteSummary(unitedKingdom, false),
+    "tspu_block=21 ok=8 uncertain=2",
+  );
+  assert.deepEqual(tspuVoteSample(unitedKingdom, false), { tspuVotes: 21, probeVotes: 31 });
+  assert.equal(finishedProbeTotal(31, 31), 31);
+});
+
 test("resolveBadgeStatus keeps a real TSPU majority and a tie", () => {
   assert.equal(
     resolveBadgeStatus({

@@ -149,6 +149,23 @@ async function readProbeVotes(
         }
         const { done, value } = await reader.read();
         if (done) {
+          buffer += decoder.decode();
+          if (buffer.length > 0) {
+            const separator = buffer.endsWith("\n") ? "\n" : "\n\n";
+            const consumed = consumeSseBuffer(`${buffer}${separator}`);
+            buffer = consumed.rest;
+            const parsed = votesFromSseEvents(consumed.events);
+            votes.push(...parsed.votes);
+            if (parsed.done) {
+              return {
+                votes,
+                failed: false,
+                done: true,
+                statusCode,
+                responseCount: parsed.responseCount,
+              };
+            }
+          }
           break;
         }
         received += value.byteLength;
@@ -242,7 +259,7 @@ export async function queryCheburcheck(
       const probe = await readProbeVotes(probeUrl, fetchImpl, options.signal);
       statusCode = probe.statusCode ?? statusCode;
       if (!probe.done && probe.votes.length > 0) {
-        return finish("keep", null);
+        return finish("keep", null, { summary: "probe-incomplete" });
       }
       if (probe.failed && probe.votes.length === 0 && !parsed.registryBlocked) {
         return finish("keep", null);
