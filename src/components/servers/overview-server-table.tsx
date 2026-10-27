@@ -41,16 +41,32 @@ export type OverviewServerRow = {
   probeVotes: number | null;
 };
 
-function TrafficPair({ rx, tx }: OverviewTraffic) {
+function TrafficHalf({
+  value,
+  widthText,
+  color,
+}: {
+  value: string;
+  widthText: string;
+  color: string;
+}) {
   return (
-    <span className="whitespace-nowrap tabular-nums">
-      <span className="font-bold" style={{ color: RX_COLOR }}>
-        {formatBytes(rx)}
+    <span className="grid px-3 text-right font-bold tabular-nums whitespace-nowrap" style={{ color }}>
+      <span className="invisible col-start-1 row-start-1 whitespace-nowrap" aria-hidden>
+        {widthText}
       </span>
-      {" / "}
-      <span className="font-bold" style={{ color: TX_COLOR }}>
-        {formatBytes(tx)}
-      </span>
+      <span className="col-start-1 row-start-1">{value}</span>
+    </span>
+  );
+}
+
+function TrafficPair({ rx, tx }: OverviewTraffic) {
+  const outgoing = formatBytes(rx);
+  const incoming = formatBytes(tx);
+  return (
+    <span className="grid grid-cols-2">
+      <TrafficHalf value={outgoing} widthText={incoming} color={RX_COLOR} />
+      <TrafficHalf value={incoming} widthText={outgoing} color={TX_COLOR} />
     </span>
   );
 }
@@ -135,13 +151,13 @@ export function OverviewServerTable({ rows }: { rows: OverviewServerRow[] }) {
               <td className={cn("border-b px-3 py-2 whitespace-nowrap", VERSION_TONE[row.versionTone])}>
                 {row.versionLabel}
               </td>
-              <td className="border-b px-3 py-2 whitespace-nowrap">
+              <td className="border-b py-2 whitespace-nowrap">
                 <TrafficPair {...row.traffic30m} />
               </td>
-              <td className="border-b px-3 py-2 whitespace-nowrap">
+              <td className="border-b py-2 whitespace-nowrap">
                 <TrafficPair {...row.traffic24h} />
               </td>
-              <td className="border-b px-3 py-2 whitespace-nowrap">
+              <td className="border-b py-2 whitespace-nowrap">
                 <TrafficPair {...row.traffic30d} />
               </td>
               <td
