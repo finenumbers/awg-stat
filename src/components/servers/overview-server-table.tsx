@@ -85,7 +85,7 @@ function BlockCell({ row }: { row: OverviewServerRow }) {
       rel="noopener noreferrer"
       aria-label={label}
       title={title}
-      className="flex items-center gap-2 whitespace-nowrap px-3 py-2"
+      className="flex items-center justify-between gap-2 whitespace-nowrap px-3 py-2"
     >
       <span
         className={
@@ -114,7 +114,7 @@ export function OverviewServerTable({ rows }: { rows: OverviewServerRow[] }) {
         <thead>
           <tr>
             {COLUMNS.map((column) => (
-              <th key={column} scope="col" className="border-b px-3 py-2 text-left font-medium whitespace-nowrap">
+              <th key={column} scope="col" className="border-b px-3 py-2 text-center font-medium whitespace-nowrap">
                 {column}
               </th>
             ))}
@@ -128,8 +128,8 @@ export function OverviewServerTable({ rows }: { rows: OverviewServerRow[] }) {
                   {row.name}
                 </Link>
               </td>
-              <td className="border-b px-3 py-2 whitespace-nowrap">{row.host}</td>
-              <td className="border-b px-3 py-2 whitespace-nowrap">
+              <td className="border-b px-3 py-2 text-right whitespace-nowrap">{row.host}</td>
+              <td className="border-b px-3 py-2 text-right whitespace-nowrap">
                 <PeerCount peers={row.peers} />
               </td>
               <td className={cn("border-b px-3 py-2 whitespace-nowrap", VERSION_TONE[row.versionTone])}>
@@ -146,7 +146,7 @@ export function OverviewServerTable({ rows }: { rows: OverviewServerRow[] }) {
               </td>
               <td
                 className={cn(
-                  "border-b px-3 py-2 whitespace-nowrap",
+                  "border-b px-3 py-2 text-right whitespace-nowrap",
                   row.icmpText === ICMP_TABLE_UNAVAILABLE_LABEL && "font-medium text-red-700",
                 )}
               >
