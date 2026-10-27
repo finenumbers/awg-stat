@@ -163,10 +163,10 @@ export async function probeAwgIcmp(host: string): Promise<{ rttMs: number | null
   const response = await agentFetch("/v1/icmp", {
     method: "POST",
     body: JSON.stringify({ host }),
-    timeoutMs: 10_000,
+    timeoutMs: 20_000,
   });
   if (!response.ok) {
-    return { rttMs: null };
+    throw new Error(await readError(response, "Проверка задержки через AmneziaWG не завершилась"));
   }
   const body = (await response.json()) as { rttMs?: unknown };
   return { rttMs: typeof body.rttMs === "number" ? body.rttMs : null };

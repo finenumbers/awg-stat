@@ -353,7 +353,7 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
   const startedEpoch = options?.epoch === undefined ? getPollerEpoch() : options.epoch;
   const viaAwg = server.connection === "SSH" && server.accessViaAwg;
   const icmpPromise = viaAwg
-    ? probeAwgIcmp(server.host).catch(() => ({ rttMs: null as number | null }))
+    ? probeAwgIcmp(server.host).catch(() => null)
     : getIcmpProbeController()
         .probe(server.id, server.host)
         .catch(() => null);

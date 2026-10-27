@@ -181,7 +181,8 @@ function main() {
           }
           if (request.method === "POST" && url === "/v1/icmp") {
             const body = await readJson(request);
-            const rttMs = await tunnel.exclusive(() => tunnel.icmp(hostFromBody(body)));
+            const ip = await tunnel.exclusive(() => tunnel.prepare(hostFromBody(body)));
+            const rttMs = await tunnel.pingPrepared(ip);
             sendJson(response, 200, { rttMs });
             return;
           }

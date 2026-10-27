@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ICMP_UNAVAILABLE_LABEL, formatRttMs, freshIcmpLabel } from "./latency";
+import { ICMP_TABLE_UNAVAILABLE_LABEL, ICMP_UNAVAILABLE_LABEL, formatRttMs, freshIcmpLabel, overviewIcmpText } from "./latency";
 
 const NOW = Date.parse("2026-09-08T00:00:00.000Z");
 
@@ -18,4 +18,10 @@ test("freshIcmpLabel always shows current RTT or unavailable", () => {
   assert.equal(freshIcmpLabel(null, new Date(NOW)), ICMP_UNAVAILABLE_LABEL);
   assert.equal(freshIcmpLabel(null, null), null);
   assert.equal(freshIcmpLabel(14, null), "14 мс");
+});
+
+test("overview table shortens only the unavailable label", () => {
+  assert.equal(overviewIcmpText(112, new Date(NOW)), "112 мс");
+  assert.equal(overviewIcmpText(null, new Date(NOW)), ICMP_TABLE_UNAVAILABLE_LABEL);
+  assert.equal(overviewIcmpText(null, null), null);
 });

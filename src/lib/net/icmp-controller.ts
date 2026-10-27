@@ -5,7 +5,7 @@ import {
   type IcmpAttempt,
 } from "@/lib/net/icmp-ping";
 import { isSafeProbeHost } from "@/lib/net/probe-host";
-import { ICMP_DNS_CACHE_TTL_MS } from "@/server/poll-defaults";
+import { ICMP_DNS_CACHE_TTL_MS, ICMP_PING_ATTEMPTS } from "@/server/poll-defaults";
 
 export type IcmpProbeDeps = {
   now: () => number;
@@ -57,15 +57,19 @@ export class IcmpProbeController {
       return { rttMs: null };
     }
 
-    const attempt = await this.deps.ping(ip);
-    if (attempt.ok) {
-      return { rttMs: attempt.rttMs };
+    let best: number | null = null;
+    for (let index = 0; index < ICMP_PING_ATTEMPTS; index += 1) {
+      const attempt = await this.deps.ping(ip);
+      if (attempt.ok) {
+        best = best == null ? attempt.rttMs : Math.min(best, attempt.rttMs);
+        continue;
+      }
+      if (isIcmpPermanentlyUnavailable(attempt.kind)) {
+        this.disabled = true;
+        return null;
+      }
     }
-    if (isIcmpPermanentlyUnavailable(attempt.kind)) {
-      this.disabled = true;
-      return null;
-    }
-    return { rttMs: null };
+    return { rttMs: best };
   }
 
   private async resolveCached(host: string): Promise<string> {

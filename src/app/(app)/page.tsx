@@ -1,18 +1,13 @@
-import Link from "next/link";
 import { Suspense } from "react";
 
 import { InfoblockBody, INFOBLOCK_CHROME } from "@/components/charts/infoblock";
-import { Sparkline } from "@/components/charts/traffic-chart";
 import { WindowTrafficValues } from "@/components/charts/window-traffic";
 import { DeletionNotice } from "@/components/servers/deletion-notice";
-import { ServerBlockHint } from "@/components/servers/server-block-hint";
-import { ServerIcmpHint } from "@/components/servers/server-icmp-hint";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { blockCheckBadge } from "@/lib/block-check/label";
-import { freshIcmpLabel } from "@/lib/latency";
+import { OverviewServerTable, type OverviewServerRow } from "@/components/servers/overview-server-table";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { overviewIcmpText } from "@/lib/latency";
 import { serverPollBadge } from "@/lib/presence";
-import { overviewCardChrome } from "@/lib/server-card";
-import { activeAwgVersionLabel, cn, formatBytes, formatDbSizeGb, formatInteger } from "@/lib/utils";
+import { activeAwgVersionLabel, formatBytes, formatDbSizeGb, formatInteger } from "@/lib/utils";
 import { getDatabaseSizeBytes } from "@/server/services/database.service";
 import { listServers, serversTraffic24h, serversTraffic30d } from "@/server/services/server.service";
 
@@ -20,21 +15,6 @@ export const dynamic = "force-dynamic";
 
 type OverviewServer = Awaited<ReturnType<typeof listServers>>[number];
 type DirectionTotals = { rx: bigint; tx: bigint };
-
-function sessionWord(count: number): string {
-  const n = Math.abs(count) % 100;
-  const last = n % 10;
-  if (n > 10 && n < 20) {
-    return "сессий";
-  }
-  if (last === 1) {
-    return "сессия";
-  }
-  if (last > 1 && last < 5) {
-    return "сессии";
-  }
-  return "сессий";
-}
 
 function overviewPollBadge(server: OverviewServer) {
   const latest = server.serverSamples[0];
@@ -85,6 +65,33 @@ export default async function OverviewPage() {
   );
   const total24h = sumTrafficMap(traffic24h);
   const total30d = sumTrafficMap(traffic30d);
+  const rows: OverviewServerRow[] = servers.map((server) => {
+    const latest = server.serverSamples[0];
+    const pollBadge = overviewPollBadge(server);
+    return {
+      id: server.id,
+      name: server.name,
+      host: server.host,
+      peers: latest
+        ? {
+            kind: "sample",
+            online: latest.onlineCount,
+            total: latest.peerCount,
+            fresh: pollBadge.kind !== "stale" && pollBadge.kind !== "offline",
+          }
+        : { kind: "count", total: server.vpnInstance?.peers.length ?? 0 },
+      versionLabel: pollBadge.label,
+      versionTone: pollBadge.tone,
+      traffic30m: sumSampleDeltas(server.serverSamples),
+      traffic24h: traffic24h.get(server.id) ?? { rx: 0n, tx: 0n },
+      traffic30d: traffic30d.get(server.id) ?? { rx: 0n, tx: 0n },
+      icmpText: overviewIcmpText(server.lastIcmpRttMs, server.lastIcmpAt),
+      blockStatus: server.lastBlockStatus,
+      blockCheckedAt: server.lastBlockCheckedAt,
+      tspuVotes: server.lastBlockTspuVotes,
+      probeVotes: server.lastBlockProbeVotes,
+    };
+  });
   const trafficWindows = [
     { label: "За 30 минут", totals: total30m },
     { label: "За 24 часа", totals: total24h },
@@ -130,132 +137,7 @@ export default async function OverviewPage() {
               </div>
             ))}
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {servers.map((server) => {
-            const latest = server.serverSamples[0];
-            const spark = [...server.serverSamples]
-              .reverse()
-              .map((sample) => Number(sample.rxDelta + sample.txDelta));
-            const peers = server.vpnInstance?.peers ?? [];
-            const online =
-              latest && server.vpnInstance
-                ? latest.onlineCount
-                : 0;
-            const pollBadge = overviewPollBadge(server);
-            const icmpLabel = freshIcmpLabel(server.lastIcmpRttMs, server.lastIcmpAt);
-            const cardChrome = overviewCardChrome({
-              icmpLabel,
-              blockStatus: server.lastBlockStatus,
-            });
-            const window30m = sumSampleDeltas(server.serverSamples);
-            const window24h = traffic24h.get(server.id) ?? { rx: 0n, tx: 0n };
-            const window30d = traffic30d.get(server.id) ?? { rx: 0n, tx: 0n };
-
-            return (
-              <Card key={server.id} className={cn("relative h-full transition-colors", cardChrome)}>
-                <Link
-                  href={`/servers/${server.id}`}
-                  className="absolute inset-0 z-0"
-                  aria-label={server.name}
-                />
-                <div className="pointer-events-none relative z-10">
-                  <CardHeader className="pb-2.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <CardTitle>{server.name}</CardTitle>
-                        <CardDescription>
-                          {server.host}
-                          {server.accessViaAwg ? " · через AWG" : ""}
-                        </CardDescription>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs ${
-                              pollBadge.tone === "ok"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-amber-100 text-amber-900"
-                            }`}
-                          >
-                            {pollBadge.label}
-                          </span>
-                          {blockCheckBadge(server.lastBlockStatus) ? (
-                            <>
-                              <span className="text-xs text-muted-foreground">/</span>
-                              <ServerBlockHint
-                                status={server.lastBlockStatus}
-                                host={server.host}
-                                checkedAt={server.lastBlockCheckedAt}
-                                tspuVotes={server.lastBlockTspuVotes}
-                                probeVotes={server.lastBlockProbeVotes}
-                              />
-                            </>
-                          ) : null}
-                        </div>
-                        <ServerIcmpHint label={icmpLabel} />
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="flex items-end justify-between gap-4">
-                    <div className="min-w-0 space-y-1 text-sm">
-                      <p>
-                        Пиры:{" "}
-                        {latest ? (
-                          <>
-                            <span
-                              className={
-                                online > 0 && pollBadge.kind !== "stale" && pollBadge.kind !== "offline"
-                                  ? "font-bold text-emerald-600 underline"
-                                  : undefined
-                              }
-                            >
-                              {formatInteger(online)} {sessionWord(online)}
-                            </span>
-                            {` / ${formatInteger(latest.peerCount)} по последнему опросу`}
-                          </>
-                        ) : (
-                          `${formatInteger(peers.length)} (ещё нет сэмплов)`
-                        )}
-                      </p>
-                      <div className="text-muted-foreground">
-                        <p>
-                          За 30 минут:{" "}
-                          <WindowTrafficValues
-                            rx={window30m.rx}
-                            tx={window30m.tx}
-                            rxLabel="исходящий:"
-                            txLabel="входящий:"
-                          />
-                        </p>
-                        <p>
-                          За 24 часа:{" "}
-                          <WindowTrafficValues
-                            rx={window24h.rx}
-                            tx={window24h.tx}
-                            rxLabel="исходящий:"
-                            txLabel="входящий:"
-                          />
-                        </p>
-                        <p>
-                          За 30 дней:{" "}
-                          <WindowTrafficValues
-                            rx={window30d.rx}
-                            tx={window30d.tx}
-                            rxLabel="исходящий:"
-                            txLabel="входящий:"
-                          />
-                        </p>
-                      </div>
-                    </div>
-                    <div className="shrink-0">
-                      <Sparkline values={spark} />
-                    </div>
-                  </CardContent>
-                </div>
-              </Card>
-            );
-            })}
-          </div>
+          <OverviewServerTable rows={rows} />
         </>
       )}
     </main>

@@ -22,5 +22,6 @@ export const POLLER_LEASE_TTL_SEC = 45;
 /** Poller may pick a server with no lastPollAt only after persist left lastSeenAt this old. */
 export const UNCLAIMED_PERSIST_SEC = 180;
 export const ICMP_PING_DEADLINE_SEC = 2;
+export const ICMP_PING_ATTEMPTS = 3;
 export const ICMP_PROCESS_TIMEOUT_MS = 3_000;
 export const ICMP_DNS_CACHE_TTL_MS = 90_000;

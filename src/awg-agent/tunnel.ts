@@ -13,6 +13,7 @@ import {
   type ParsedAwgConf,
 } from "@/lib/awg/conf";
 import { isSafeProbeHost } from "@/lib/net/probe-host";
+import { ICMP_PING_ATTEMPTS, ICMP_PING_DEADLINE_SEC } from "@/server/poll-defaults";
 import {
   chooseRouteIp,
   deletionPlan,
@@ -45,6 +46,30 @@ export type TunnelStatus = {
 const OUTPUT_LIMIT = 64_000;
 
 type CommandResult = { code: number; stdout: string; stderr: string; truncated: boolean };
+
+export function rttFromAgentPing(code: number, stdout: string): number | null {
+  const match = stdout.match(/time[=<]([0-9.]+)/);
+  if (code !== 0 || !match) {
+    return null;
+  }
+  const rtt = Math.round(Number(match[1]));
+  return Number.isFinite(rtt) ? rtt : null;
+}
+
+export async function lowestRespondingRtt(
+  attempts: number,
+  probe: () => Promise<number | null>,
+): Promise<number | null> {
+  let best: number | null = null;
+  for (let index = 0; index < attempts; index += 1) {
+    const rtt = await probe();
+    if (rtt == null || !Number.isFinite(rtt)) {
+      continue;
+    }
+    best = best == null ? rtt : Math.min(best, rtt);
+  }
+  return best;
+}
 
 function run(command: string, args: string[], timeoutMs = 8_000): Promise<CommandResult> {
   return new Promise((resolve) => {
@@ -341,13 +366,18 @@ export class AwgTunnel {
 
   async icmp(host: string): Promise<number | null> {
     const ip = await this.prepare(host);
-    const family = isIP(ip) === 6 ? "-6" : "-4";
-    const result = await run("ping", [family, "-c", "1", "-W", "2", "-n", ip]);
-    const match = result.stdout.match(/time[=<]([0-9.]+)/);
-    if (result.code !== 0 || !match) {
+    return this.pingPrepared(ip);
+  }
+
+  async pingPrepared(ip: string): Promise<number | null> {
+    if (!isIP(ip)) {
       return null;
     }
-    return Math.round(Number(match[1]));
+    const family = isIP(ip) === 6 ? "-6" : "-4";
+    return lowestRespondingRtt(ICMP_PING_ATTEMPTS, async () => {
+      const result = await run("ping", [family, "-c", "1", "-W", String(ICMP_PING_DEADLINE_SEC), "-n", ip]);
+      return rttFromAgentPing(result.code, result.stdout);
+    });
   }
 
   async status(): Promise<TunnelStatus> {
