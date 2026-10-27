@@ -126,7 +126,7 @@ function BlockCell({ row }: { row: OverviewServerRow }) {
 export function OverviewServerTable({ rows }: { rows: OverviewServerRow[] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-max border-separate border-spacing-0 text-sm">
+      <table className="w-max border-separate border-spacing-0 text-sm [&_tbody_tr:last-child_td]:border-b-0 [&_td:not(:last-child)]:border-r [&_th:not(:last-child)]:border-r">
         <thead>
           <tr>
             {COLUMNS.map((column) => (
