@@ -2,6 +2,7 @@ export type BlockCheckBadgeStatus = "unrestricted" | "blocked";
 
 export const BLOCK_UNRESTRICTED_LABEL = "Не ограничен";
 export const BLOCK_BLOCKED_LABEL = "Заблокирован";
+export const BLOCK_CHECK_FRACTION_SEPARATOR = " / ";
 
 export function blockCheckBadge(status: string | null | undefined): BlockCheckBadgeStatus | null {
   if (status === "unrestricted" || status === "blocked") {
@@ -46,5 +47,5 @@ export function blockCheckLabel(
   if (parts.tspuVotes == null || parts.probeVotes == null) {
     return parts.base;
   }
-  return `${parts.base} (${parts.tspuVotes}/${parts.probeVotes})`;
+  return `${parts.base} (${parts.tspuVotes}${BLOCK_CHECK_FRACTION_SEPARATOR}${parts.probeVotes})`;
 }

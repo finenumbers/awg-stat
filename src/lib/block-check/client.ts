@@ -228,6 +228,9 @@ export async function queryCheburcheck(
     let votes: ProbeVote[] = [];
     let responseCount: number | null = null;
     const probeUrl = parsed.id ? buildProbeUrl(parsed.id) : null;
+    if (parsed.id && !probeUrl) {
+      return finish("keep", null, { summary: "probe-id-rejected" });
+    }
     if (probeUrl) {
       if (options.signal?.aborted) {
         return finish("keep", null);

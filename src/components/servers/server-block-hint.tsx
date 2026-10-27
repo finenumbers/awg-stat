@@ -1,4 +1,9 @@
-import { blockCheckBadge, blockCheckLabel, blockCheckLabelParts } from "@/lib/block-check/label";
+import {
+  BLOCK_CHECK_FRACTION_SEPARATOR,
+  blockCheckBadge,
+  blockCheckLabel,
+  blockCheckLabelParts,
+} from "@/lib/block-check/label";
 import { buildDetailUrl } from "@/lib/block-check/probe-stream";
 import { formatDateTime } from "@/lib/utils";
 
@@ -40,7 +45,8 @@ export function ServerBlockHint({
       ) : (
         <>
           {parts.base} (
-          {parts.emphasizeTspu ? <span className="text-red-700">{parts.tspuVotes}</span> : parts.tspuVotes}/
+          {parts.emphasizeTspu ? <span className="text-red-700">{parts.tspuVotes}</span> : parts.tspuVotes}
+          {BLOCK_CHECK_FRACTION_SEPARATOR}
           {parts.probeVotes})
         </>
       )}

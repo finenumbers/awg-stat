@@ -1,4 +1,4 @@
-export const BLOCK_CHECK_INTERVAL_MS = 10 * 60 * 1000;
+export const BLOCK_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 export const BLOCK_CHECK_BACKOFF_MS = 60_000;
 export const BLOCK_CHECK_PROBE_GAP_MS = 12_000;
 export const BLOCK_CHECK_PROBE_TIMEOUT_MS = 20_000;

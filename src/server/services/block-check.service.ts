@@ -137,13 +137,13 @@ async function checkHost(
       : { kind: "keep" },
     Date.now(),
   );
-  state.hosts.set(host, next);
 
   if (outcome.kind === "verdict" && outcome.status) {
     await persistVerdict(idsForHost(servers, host), outcome.status, new Date(next.checkedAt ?? Date.now()), {
       tspuVotes: outcome.tspuVotes,
       probeVotes: outcome.probeVotes,
     });
+    state.hosts.set(host, next);
     const votes = outcome.summary ? ` votes=${outcome.summary}` : "";
     const sample =
       outcome.tspuVotes != null && outcome.probeVotes != null
@@ -155,13 +155,15 @@ async function checkHost(
     return { statusCode: outcome.statusCode, kind: "verdict" };
   }
 
+  state.hosts.set(host, next);
+  const reason = outcome.summary ? ` reason=${outcome.summary}` : "";
   if (outcome.statusCode != null && outcome.statusCode < 400) {
     console.info(
-      `[block-check] host=${host} no scanner verdict status=${outcome.statusCode} durationMs=${outcome.durationMs}`,
+      `[block-check] host=${host} no scanner verdict status=${outcome.statusCode} durationMs=${outcome.durationMs}${reason}`,
     );
   } else {
     console.warn(
-      `[block-check] host=${host} kept previous verdict status=${outcome.statusCode} durationMs=${outcome.durationMs}`,
+      `[block-check] host=${host} kept previous verdict status=${outcome.statusCode} durationMs=${outcome.durationMs}${reason}`,
     );
   }
   return { statusCode: outcome.statusCode, kind: "keep" };

@@ -10,6 +10,8 @@ export type SseEvent = {
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CHECK_CONTEXT_PATTERN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+const MAX_PROBE_ID_LENGTH = 2048;
 
 const CHEBURCHECK_ORIGIN = "https://cheburcheck.ru";
 
@@ -18,10 +20,14 @@ export function buildCheckUrl(host: string): string {
 }
 
 export function buildProbeUrl(id: string): string | null {
-  if (!UUID_PATTERN.test(id)) {
+  const token = id.trim();
+  if (token.length === 0 || token.length > MAX_PROBE_ID_LENGTH) {
     return null;
   }
-  return `${CHEBURCHECK_ORIGIN}/api/v1/probe/${id}`;
+  if (!UUID_PATTERN.test(token) && !CHECK_CONTEXT_PATTERN.test(token)) {
+    return null;
+  }
+  return `${CHEBURCHECK_ORIGIN}/api/v1/probe/${encodeURIComponent(token)}`;
 }
 
 export function buildDetailUrl(host: string): string {

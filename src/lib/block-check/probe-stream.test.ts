@@ -9,13 +9,21 @@ import {
   votesFromSseEvents,
 } from "./probe-stream";
 
-test("buildProbeUrl rejects a non-uuid id", () => {
-  assert.equal(buildProbeUrl("not-a-uuid"), null);
-  assert.equal(buildProbeUrl("../admin"), null);
+const CHECK_CONTEXT = "eyJhbGciOiJIUzI1NiJ9.eyJ0ZXN0IjoxfQ.c2lnbmF0dXJldmFsdWU";
+
+test("buildProbeUrl accepts a signed check context and a uuid", () => {
+  assert.equal(
+    buildProbeUrl(CHECK_CONTEXT),
+    `https://cheburcheck.ru/api/v1/probe/${CHECK_CONTEXT}`,
+  );
   assert.equal(
     buildProbeUrl("01a0d4a8-f830-7179-be40-f69866b977c0"),
     "https://cheburcheck.ru/api/v1/probe/01a0d4a8-f830-7179-be40-f69866b977c0",
   );
+  assert.equal(buildProbeUrl("not-a-uuid"), null);
+  assert.equal(buildProbeUrl("../admin"), null);
+  assert.equal(buildProbeUrl("a.b.c.d"), null);
+  assert.equal(buildProbeUrl(`${"a".repeat(800)}.${"b".repeat(800)}.${"c".repeat(800)}`), null);
 });
 
 test("buildDetailUrl points at the public check page", () => {

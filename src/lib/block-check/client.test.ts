@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { queryCheburcheck } from "./client";
+import { buildProbeUrl } from "./probe-stream";
 
 const PROBE_ID = "01a0d4a8-f830-7179-be40-f69866b977c0";
+const CHECK_CONTEXT = "eyJhbGciOiJIUzI1NiJ9.eyJ0ZXN0IjoxfQ.c2lnbmF0dXJldmFsdWU";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -50,6 +52,41 @@ function probeEvents(count: number, tspu: number, responseCount: number, onlineP
   );
   return blocks.join("");
 }
+
+test("queryCheburcheck follows a signed check context to the probe", async () => {
+  const seen: string[] = [];
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async (input) => {
+      const url = String(input);
+      seen.push(url);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: false, id: CHECK_CONTEXT });
+      }
+      return sseResponse(
+        'event:result\ndata:{"verdicts":["tspu_block"],"probe_id":"1","host_results":[{}]}\n\nevent:done\ndata:{"response_count":1}\n\n',
+      );
+    },
+  });
+  assert.equal(outcome.kind, "verdict");
+  assert.equal(outcome.status, "blocked");
+  assert.equal(outcome.tspuVotes, 1);
+  assert.equal(outcome.probeVotes, 1);
+  assert.equal(seen[1], buildProbeUrl(CHECK_CONTEXT));
+});
+
+test("queryCheburcheck keeps a registry block when the probe id cannot be opened", async () => {
+  let calls = 0;
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async () => {
+      calls += 1;
+      return jsonResponse({ blocked: true, id: "not a probe id" });
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(outcome.kind, "keep");
+  assert.equal(outcome.status, null);
+  assert.equal(outcome.summary, "probe-id-rejected");
+});
 
 test("queryCheburcheck marks registry-blocked without a probe as blocked", async () => {
   const outcome = await queryCheburcheck("vpn.example.com", {
