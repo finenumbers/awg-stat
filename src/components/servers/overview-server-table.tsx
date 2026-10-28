@@ -12,7 +12,7 @@ import type { PresenceTone } from "@/lib/presence";
 import { RX_COLOR, TX_COLOR } from "@/lib/traffic-colors";
 import { cn, formatBytes, formatDateTime, formatInteger } from "@/lib/utils";
 
-const COLUMNS = ["Сервер", "Адрес", "Пиры", "Версия", "30 минут", "24 часа", "30 дней", "Задержка", "Блокировка"] as const;
+const COLUMNS = ["Сервер", "Адрес", "Пиры", "Версия", "Трафик за 30 минут", "Трафик за 24 часа", "Трафик за 30 дней", "Задержка", "Блокировка ТСПУ"] as const;
 
 const VERSION_TONE: Record<PresenceTone, string> = {
   ok: "text-emerald-700",
