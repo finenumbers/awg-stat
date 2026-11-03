@@ -146,7 +146,7 @@ export function OverviewServerTable({ rows }: { rows: OverviewServerRow[] }) {
                 </Link>
               </td>
               <td className="border-b px-3 py-2 text-right whitespace-nowrap">{row.host}</td>
-              <td className="border-b px-3 py-2 text-right">
+              <td className="border-b px-3 py-2 text-left">
                 {row.ip ? (
                   row.ip.split("\n").map((ip) => (
                     <div key={ip} className="whitespace-nowrap tabular-nums">
