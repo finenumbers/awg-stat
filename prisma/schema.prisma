@@ -167,6 +167,8 @@ model Server {
   id                    String       @id @default(cuid())
   name                  String
   host                  String
+  /// Newline-separated A and AAAA records for host. The poller writes this. Cleared when host changes.
+  resolvedIps           String?
   port                  Int               @default(22)
   /// Partial unique index server_one_local_docker allows only one LOCAL_DOCKER row.
   connection            ServerConnection  @default(SSH)

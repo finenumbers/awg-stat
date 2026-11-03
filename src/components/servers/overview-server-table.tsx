@@ -12,7 +12,7 @@ import type { PresenceTone } from "@/lib/presence";
 import { RX_COLOR, TX_COLOR } from "@/lib/traffic-colors";
 import { cn, formatBytes, formatDateTime, formatInteger } from "@/lib/utils";
 
-const COLUMNS = ["Сервер", "Адрес", "Пиры", "Версия", "Трафик за 30 минут", "Трафик за 24 часа", "Трафик за 30 дней", "Задержка", "Блокировка ТСПУ"] as const;
+const COLUMNS = ["Сервер", "Адрес", "IP адрес", "Пиры", "Версия", "Трафик за 30 минут", "Трафик за 24 часа", "Трафик за 30 дней", "Задержка", "Блокировка ТСПУ"] as const;
 
 const VERSION_TONE: Record<PresenceTone, string> = {
   ok: "text-emerald-700",
@@ -26,6 +26,7 @@ export type OverviewServerRow = {
   id: string;
   name: string;
   host: string;
+  ip: string | null;
   peers:
     | { kind: "sample"; online: number; total: number; fresh: boolean }
     | { kind: "count"; total: number };
@@ -145,6 +146,17 @@ export function OverviewServerTable({ rows }: { rows: OverviewServerRow[] }) {
                 </Link>
               </td>
               <td className="border-b px-3 py-2 text-right whitespace-nowrap">{row.host}</td>
+              <td className="border-b px-3 py-2 text-right">
+                {row.ip ? (
+                  row.ip.split("\n").map((ip) => (
+                    <div key={ip} className="whitespace-nowrap tabular-nums">
+                      {ip}
+                    </div>
+                  ))
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </td>
               <td className="border-b px-3 py-2 text-right whitespace-nowrap">
                 <PeerCount peers={row.peers} />
               </td>

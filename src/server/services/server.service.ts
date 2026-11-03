@@ -367,6 +367,7 @@ export async function updateServerAccess(serverId: string, input: ServerAccessIn
           host: input.host,
           port: input.port,
           accessViaAwg: input.accessViaAwg,
+          ...(input.host === server.host ? {} : { resolvedIps: null }),
           ...(sameTarget
             ? {}
             : {

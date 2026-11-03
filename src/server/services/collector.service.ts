@@ -22,6 +22,7 @@ import { probeAwgIcmp } from "@/lib/awg/agent-client";
 import { fetchAwgRead, localDockerErrorMessage, type LocalDockerPhase } from "@/lib/docker/agent-client";
 import { LOCAL_AWG_CONTAINER } from "@/lib/docker/awg-target";
 import { db } from "@/lib/db";
+import { resolveHostIps, resolvedIpsWrite, type HostIpResult } from "@/lib/net/host-ip";
 import { getIcmpProbeController } from "@/lib/net/icmp-controller";
 import { withDeadline, withSshConnection, type SshClient, type SshConnectionConfig, type SshSession } from "@/lib/ssh/client";
 import { canCommitPoll, shouldRetrySshPoll } from "@/lib/ssh/errors";
@@ -301,6 +302,22 @@ function icmpWriteFields(result: { rttMs: number | null } | null): {
   return { lastIcmpRttMs: result.rttMs, lastIcmpAt: new Date() };
 }
 
+async function writeResolvedIps(serverId: string, host: string, current: string | null, result: HostIpResult) {
+  const data = resolvedIpsWrite(current, result);
+  if (!data) {
+    return;
+  }
+  try {
+    await db.server.updateMany({
+      where: { id: serverId, host },
+      data,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "ошибка записи IP";
+    console.error(`[collector] resolved ip server=${serverId}: ${message}`);
+  }
+}
+
 async function pollRemote(
   serverId: string,
   config: SshConnectionConfig,
@@ -357,6 +374,7 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
     : getIcmpProbeController()
         .probe(server.id, server.host)
         .catch(() => null);
+  const ipPromise = resolveHostIps(server.host).catch((): HostIpResult => ({ kind: "unknown" }));
 
   try {
     const result =
@@ -380,6 +398,7 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
       where: { id: serverId },
       data: { lastPollAt: new Date(), lastPollError: null, ...icmpWriteFields(icmpResult) },
     });
+    await writeResolvedIps(server.id, server.host, server.resolvedIps, await ipPromise);
     await enrichServerPeerEndpoints(serverId);
   } catch (error) {
     if (isGoneAfterDelete(error)) {
@@ -400,6 +419,7 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
         where: { id: serverId },
         data: { lastPollAt: new Date(), lastPollError: message, ...icmpWriteFields(icmpResult) },
       });
+      await writeResolvedIps(server.id, server.host, server.resolvedIps, await ipPromise);
     }
     throw error;
   }

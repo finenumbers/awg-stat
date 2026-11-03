@@ -72,6 +72,7 @@ export default async function OverviewPage() {
       id: server.id,
       name: server.name,
       host: server.host,
+      ip: server.resolvedIps,
       peers: latest
         ? {
             kind: "sample",
