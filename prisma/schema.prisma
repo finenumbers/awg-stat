@@ -191,9 +191,10 @@ model Server {
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 
-  credential      ServerCredential?
-  vpnInstance     VpnInstance?
-  serverSamples   ServerSample[]
+  credential        ServerCredential?
+  vpnInstance       VpnInstance?
+  serverSamples     ServerSample[]
+  peerHourlySamples PeerHourlySample[]
 
   @@unique([host, port])
   @@map("server")
@@ -316,8 +317,10 @@ model PeerSample {
 
 model PeerHourlySample {
   id         String   @id @default(cuid())
-  peerId     String
-  peer       Peer     @relation(fields: [peerId], references: [id], onDelete: Cascade)
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  peerId     String?
+  peer       Peer?    @relation(fields: [peerId], references: [id], onDelete: SetNull)
   hourStart  DateTime
   rxDelta    BigInt   @default(0)
   txDelta    BigInt   @default(0)
@@ -326,6 +329,7 @@ model PeerHourlySample {
 
   @@unique([peerId, hourStart])
   @@index([peerId, hourStart(sort: Desc)])
+  @@index([serverId, hourStart(sort: Desc)])
   @@map("peer_hourly_sample")
 }
 

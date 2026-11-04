@@ -247,7 +247,7 @@ export async function applyResolvedGeos(geos: Map<string, EndpointGeo>): Promise
     }
     const match = endpointMatchFilter(ip);
     await db.peer.updateMany({
-      where: match,
+      where: { AND: [match, { status: "ACTIVE" }] },
       data: {
         endpointCountryName: geo.countryName,
         endpointCityName: geo.cityName,
@@ -256,7 +256,7 @@ export async function applyResolvedGeos(geos: Map<string, EndpointGeo>): Promise
     });
     await db.peerPresenceEvent.updateMany({
       where: {
-        AND: [match, { countryName: null, cityName: null, organization: null }],
+        AND: [match, { countryName: null, cityName: null, organization: null }, { peer: { status: "ACTIVE" } }],
       },
       data: {
         countryName: geo.countryName,
@@ -277,11 +277,11 @@ export async function enrichServerPeerEndpoints(serverId: string): Promise<void>
     const since = presenceCutoff();
     const [peers, events] = await Promise.all([
       db.peer.findMany({
-        where: { vpnInstance: { serverId } },
+        where: { vpnInstance: { serverId }, status: "ACTIVE" },
         select: { endpoint: true },
       }),
       db.peerPresenceEvent.findMany({
-        where: { peer: { vpnInstance: { serverId } }, occurredAt: { gte: since } },
+        where: { peer: { vpnInstance: { serverId }, status: "ACTIVE" }, occurredAt: { gte: since } },
         select: { endpoint: true },
         distinct: ["endpoint"],
       }),

@@ -127,7 +127,7 @@ export async function getServerDetail(id: string) {
     include: {
       vpnInstance: {
         include: {
-          peers: true,
+          peers: { where: { status: "ACTIVE" } },
         },
       },
       serverSamples: {
@@ -167,7 +167,7 @@ export async function listPeerPresenceEvents(peerId: string) {
 
 export async function getPeerDetail(serverId: string, peerId: string) {
   const peer = await db.peer.findFirst({
-    where: { id: peerId, vpnInstance: { serverId } },
+    where: { id: peerId, status: "ACTIVE", vpnInstance: { serverId } },
     include: {
       vpnInstance: { include: { server: true } },
     },
@@ -248,7 +248,7 @@ async function assertServerDataGone(
   peerIds: string[],
 ) {
   const peerWhere = peerIds.length > 0 ? { peerId: { in: peerIds } } : null;
-  const [servers, credentials, instances, serverSamples, peers, peerSamples, hourly, presence] =
+  const [servers, credentials, instances, serverSamples, peers, peerSamples, hourly, hourlyByServer, presence] =
     await Promise.all([
       tx.server.count({ where: { id: serverId } }),
       tx.serverCredential.count({ where: { serverId } }),
@@ -259,9 +259,11 @@ async function assertServerDataGone(
       peerIds.length ? tx.peer.count({ where: { id: { in: peerIds } } }) : 0,
       peerWhere ? tx.peerSample.count({ where: peerWhere }) : 0,
       peerWhere ? tx.peerHourlySample.count({ where: peerWhere }) : 0,
+      tx.peerHourlySample.count({ where: { serverId } }),
       peerWhere ? tx.peerPresenceEvent.count({ where: peerWhere }) : 0,
     ]);
-  const leftover = servers + credentials + instances + serverSamples + peers + peerSamples + hourly + presence;
+  const leftover =
+    servers + credentials + instances + serverSamples + peers + peerSamples + hourly + hourlyByServer + presence;
   if (leftover > 0) {
     console.error("[deleteServer] leftover rows", {
       serverId,
@@ -272,6 +274,7 @@ async function assertServerDataGone(
       peers,
       peerSamples,
       hourly,
+      hourlyByServer,
       presence,
     });
     throw new Error(LEFTOVER_ERROR);
@@ -442,32 +445,18 @@ export async function serversTraffic30d(serverIds: string[], now = Date.now()) {
     return totals;
   }
 
-  const since30 = peerHourlySince(now);
-  const [hourlyRows, peerRows] = await Promise.all([
-    db.peerHourlySample.groupBy({
-      by: ["peerId"],
-      where: {
-        hourStart: { gte: since30 },
-        peer: { vpnInstance: { serverId: { in: serverIds } } },
-      },
-      _sum: { rxDelta: true, txDelta: true },
-    }),
-    db.peer.findMany({
-      where: { vpnInstance: { serverId: { in: serverIds } } },
-      select: { id: true, vpnInstance: { select: { serverId: true } } },
-    }),
-  ]);
-
-  const serverByPeer = new Map(peerRows.map((peer) => [peer.id, peer.vpnInstance.serverId]));
-  for (const row of hourlyRows) {
-    const serverId = serverByPeer.get(row.peerId);
-    if (!serverId) {
-      continue;
-    }
-    const current = totals.get(serverId) ?? emptyDirectionTotals();
-    totals.set(serverId, {
-      rx: current.rx + (row._sum.rxDelta ?? 0n),
-      tx: current.tx + (row._sum.txDelta ?? 0n),
+  const rows = await db.peerHourlySample.groupBy({
+    by: ["serverId"],
+    where: {
+      serverId: { in: serverIds },
+      hourStart: { gte: peerHourlySince(now) },
+    },
+    _sum: { rxDelta: true, txDelta: true },
+  });
+  for (const row of rows) {
+    totals.set(row.serverId, {
+      rx: row._sum.rxDelta ?? 0n,
+      tx: row._sum.txDelta ?? 0n,
     });
   }
   return totals;
@@ -546,6 +535,9 @@ export async function peersTrafficTotals(peerIds: string[], now = Date.now()) {
     }
   }
   for (const row of rows30d) {
+    if (!row.peerId) {
+      continue;
+    }
     const current = totals.get(row.peerId);
     if (current) {
       current["30d"] = {
@@ -624,8 +616,8 @@ export async function serverTrafficWindows(serverId: string): Promise<TrafficWin
     db.peerHourlySample.groupBy({
       by: ["hourStart"],
       where: {
+        serverId,
         hourStart: { gte: since30 },
-        peer: { vpnInstance: { serverId } },
       },
       _sum: { rxDelta: true, txDelta: true },
       orderBy: { hourStart: "asc" },

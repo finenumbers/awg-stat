@@ -18,6 +18,7 @@ import {
   type ParsedDockerInspect,
   type ParsedPoll,
 } from "@/lib/amnezia/parse";
+import { isPeerListComplete, planPeerRemovals } from "@/lib/amnezia/peer-sync";
 import { probeAwgIcmp } from "@/lib/awg/agent-client";
 import { fetchAwgRead, localDockerErrorMessage, type LocalDockerPhase } from "@/lib/docker/agent-client";
 import { LOCAL_AWG_CONTAINER } from "@/lib/docker/awg-target";
@@ -173,7 +174,13 @@ async function readLocalAwg(deadlineMs: number, phase: LocalDockerPhase) {
           : "Нет сырых счётчиков transfer / latest-handshakes",
       );
     }
-    return { parsed, inspect, containerName: read.body.containerName, hostKeyFingerprint: null as string | null };
+    return {
+      parsed,
+      inspect,
+      containerName: read.body.containerName,
+      hostKeyFingerprint: null as string | null,
+      peerListComplete: isPeerListComplete(read.body.pollStdout),
+    };
   } catch (error) {
     if (error instanceof CollectorError) {
       throw error;
@@ -189,13 +196,13 @@ async function readLocalAwg(deadlineMs: number, phase: LocalDockerPhase) {
 
 async function finishLocalOnboard(
   serverId: string,
-  result: { parsed: ParsedPoll; inspect: ParsedDockerInspect; containerName: string },
+  result: { parsed: ParsedPoll; inspect: ParsedDockerInspect; containerName: string; peerListComplete: boolean },
 ) {
   await db.server.update({
     where: { id: serverId },
     data: { dockerAccess: "DOCKER", lastPollError: null },
   });
-  await persistPoll(serverId, result.containerName, result.parsed, result.inspect);
+  await persistPoll(serverId, result.containerName, result.parsed, result.inspect, result.peerListComplete);
   await db.server.update({
     where: { id: serverId },
     data: { lastPollAt: new Date(), lastPollError: null },
@@ -248,7 +255,13 @@ export async function onboardExistingServer(serverId: string, userId: string | n
       throw new CollectorError("Контейнер не отдал селекторы transfer / latest-handshakes. Цифры не выдумываем");
     }
 
-    return { prefix, parsed, inspect, containerName: selected.target.name };
+    return {
+      prefix,
+      parsed,
+      inspect,
+      containerName: selected.target.name,
+      peerListComplete: isPeerListComplete(poll.stdout),
+    };
   });
 
   await db.server.update({
@@ -261,7 +274,7 @@ export async function onboardExistingServer(serverId: string, userId: string | n
     },
   });
 
-  await persistPoll(serverId, result.containerName, result.parsed, result.inspect);
+  await persistPoll(serverId, result.containerName, result.parsed, result.inspect, result.peerListComplete);
   await db.server.update({
     where: { id: serverId },
     data: { lastPollAt: new Date(), lastPollError: null },
@@ -289,7 +302,7 @@ async function readVpnState(client: SshSession, prefix: DockerPrefix, containerN
   if (!parsed.transferOk || !parsed.handshakeOk) {
     throw new CollectorError("Нет сырых счётчиков transfer / latest-handshakes");
   }
-  return { parsed, inspect, containerName };
+  return { parsed, inspect, containerName, peerListComplete: isPeerListComplete(poll.stdout) };
 }
 
 function icmpWriteFields(result: { rttMs: number | null } | null): {
@@ -329,6 +342,7 @@ async function pollRemote(
   inspect: ParsedDockerInspect;
   containerName: string;
   hostKeyFingerprint: string | null;
+  peerListComplete: boolean;
 }> {
   const registry = getSshSessionRegistry();
   const startedAt = Date.now();
@@ -393,7 +407,7 @@ export async function pollServer(serverId: string, options?: { deadlineMs?: numb
       });
     }
 
-    await persistPoll(serverId, result.containerName, result.parsed, result.inspect);
+    await persistPoll(serverId, result.containerName, result.parsed, result.inspect, result.peerListComplete);
     await db.server.update({
       where: { id: serverId },
       data: { lastPollAt: new Date(), lastPollError: null, ...icmpWriteFields(icmpResult) },
@@ -430,9 +444,10 @@ async function persistPoll(
   containerName: string,
   parsed: ParsedPoll,
   inspect: ParsedDockerInspect,
+  peerListComplete: boolean,
 ) {
   try {
-    await persistPollUnlocked(serverId, containerName, parsed, inspect);
+    await persistPollUnlocked(serverId, containerName, parsed, inspect, peerListComplete);
   } catch (error) {
     if (isGoneAfterDelete(error)) {
       return;
@@ -446,6 +461,7 @@ async function persistPollUnlocked(
   containerName: string,
   parsed: ParsedPoll,
   inspect: ParsedDockerInspect,
+  peerListComplete: boolean,
 ) {
   const now = new Date();
   const running = inspect.running;
@@ -617,6 +633,7 @@ async function persistPollUnlocked(
         },
         create: {
           peerId: peer.id,
+          serverId,
           hourStart,
           rxDelta,
           txDelta,
@@ -636,37 +653,20 @@ async function persistPollUnlocked(
     }
   }
 
-  const vanished = existing.filter((peer) => peer.status === "ACTIVE" && !seen.has(peer.publicKey));
-  for (const peer of vanished) {
-    const lastEvent = lastEventByPeerId.get(peer.id) ?? null;
-    const kind = presenceTransition({
-      online: false,
-      previousOnline: previousPresenceOnline({
-        lastEventKind: lastEvent?.kind,
-        lastSampleOnline: peer.lastOnline,
-      }),
+  if (!peerListComplete) {
+    console.warn(`[collector] skip peer removal server=${serverId}: poll output has no closing marker`);
+  }
+  const removal = planPeerRemovals(existing, seen, peerListComplete);
+  if (removal.deleteIds.length > 0) {
+    await db.peer.deleteMany({ where: { id: { in: removal.deleteIds } } });
+    console.info(`[collector] deleted peers server=${serverId} count=${removal.deleteIds.length}`);
+  }
+  if (removal.markRemovedIds.length > 0) {
+    await db.peer.updateMany({
+      where: { id: { in: removal.markRemovedIds } },
+      data: { status: "REMOVED", removedAt: now, lastOnline: false },
     });
-    await db.$transaction([
-      db.peer.update({
-        where: { id: peer.id },
-        data: { status: "REMOVED", removedAt: now, lastOnline: false },
-      }),
-      ...(kind
-        ? [
-            db.peerPresenceEvent.create({
-              data: {
-                peerId: peer.id,
-                kind,
-                occurredAt: now,
-                endpoint: peer.endpoint,
-                countryName: peer.endpointCountryName,
-                cityName: peer.endpointCityName,
-                organization: peer.endpointOrganization,
-              },
-            }),
-          ]
-        : []),
-    ]);
+    console.info(`[collector] marked removed peers server=${serverId} count=${removal.markRemovedIds.length}`);
   }
 
   await db.serverSample.create({
