@@ -12,7 +12,7 @@ import type { PresenceTone } from "@/lib/presence";
 import { RX_COLOR, TX_COLOR } from "@/lib/traffic-colors";
 import { cn, formatBytes, formatDateTime, formatInteger } from "@/lib/utils";
 
-const COLUMNS = ["Сервер", "Адрес", "IP адрес", "Пиры", "Версия", "Трафик за 30 минут", "Трафик за 24 часа", "Трафик за 30 дней", "Задержка", "Блокировка ТСПУ"] as const;
+const COLUMNS = ["Сервер", "Адрес", "IP адрес", "Пиры", "Версия", "Трафик за 30 минут", "Трафик за 24 часа", "Трафик за 30 дней", "Задержка", "Блокировка ТСПУ", "Последнее обновление"] as const;
 
 const VERSION_TONE: Record<PresenceTone, string> = {
   ok: "text-emerald-700",
@@ -102,7 +102,7 @@ function BlockCell({ row }: { row: OverviewServerRow }) {
       rel="noopener noreferrer"
       aria-label={label}
       title={title}
-      className="flex items-center gap-3 whitespace-nowrap px-3 py-2"
+      className="flex items-center justify-between gap-2 whitespace-nowrap px-3 py-2"
     >
       <span
         className={
@@ -119,9 +119,6 @@ function BlockCell({ row }: { row: OverviewServerRow }) {
           {BLOCK_CHECK_FRACTION_SEPARATOR}
           {parts.probeVotes}
         </span>
-      ) : null}
-      {row.blockCheckedAt ? (
-        <span className="text-xs tabular-nums text-muted-foreground">{formatDateTime(row.blockCheckedAt)}</span>
       ) : null}
     </a>
   );
@@ -185,6 +182,13 @@ export function OverviewServerTable({ rows }: { rows: OverviewServerRow[] }) {
               </td>
               <td className="border-b p-0 whitespace-nowrap">
                 <BlockCell row={row} />
+              </td>
+              <td className="border-b px-3 py-2 text-right whitespace-nowrap tabular-nums">
+                {row.blockCheckedAt ? (
+                  formatDateTime(row.blockCheckedAt)
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
               </td>
             </tr>
           ))}
