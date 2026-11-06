@@ -1,6 +1,7 @@
 import { queryCheburcheck } from "@/lib/block-check/client";
 import {
   applyObservation,
+  dueHostOrder,
   globalBackoffAfterOutcome,
   isBlockCheckEnabled,
   isHostDue,
@@ -197,7 +198,10 @@ async function refresh(startedEpoch: number | null, signal: AbortSignal): Promis
     }
 
     const now = Date.now();
-    const due = hosts.filter((host) => isHostDue(state.hosts.get(host), now));
+    const due = dueHostOrder(
+      hosts.filter((host) => isHostDue(state.hosts.get(host), now)),
+      (host) => state.hosts.get(host)?.checkedAt,
+    );
     let consecutiveOutboundKeeps = 0;
 
     for (const host of due) {

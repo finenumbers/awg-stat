@@ -102,7 +102,7 @@ function BlockCell({ row }: { row: OverviewServerRow }) {
       rel="noopener noreferrer"
       aria-label={label}
       title={title}
-      className="flex items-center justify-between gap-2 whitespace-nowrap px-3 py-2"
+      className="flex items-center gap-3 whitespace-nowrap px-3 py-2"
     >
       <span
         className={
@@ -119,6 +119,9 @@ function BlockCell({ row }: { row: OverviewServerRow }) {
           {BLOCK_CHECK_FRACTION_SEPARATOR}
           {parts.probeVotes}
         </span>
+      ) : null}
+      {row.blockCheckedAt ? (
+        <span className="text-xs tabular-nums text-muted-foreground">{formatDateTime(row.blockCheckedAt)}</span>
       ) : null}
     </a>
   );

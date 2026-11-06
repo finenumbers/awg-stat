@@ -1,4 +1,4 @@
-export const BLOCK_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+export const BLOCK_CHECK_INTERVAL_MS = 3 * 60 * 1000;
 export const BLOCK_CHECK_BACKOFF_MS = 60_000;
 export const BLOCK_CHECK_PROBE_GAP_MS = 12_000;
 export const BLOCK_CHECK_PROBE_TIMEOUT_MS = 45_000;
@@ -29,6 +29,27 @@ export function isHostDue(state: HostBlockState | undefined, now: number): boole
   }
 
   return now - state.checkedAt >= BLOCK_CHECK_INTERVAL_MS;
+}
+
+/** Never-checked addresses first, then the oldest successful check. Ties keep name order. */
+export function dueHostOrder(
+  hosts: readonly string[],
+  checkedAt: (host: string) => number | null | undefined,
+): string[] {
+  return [...hosts].sort((left, right) => {
+    const leftAt = checkedAt(left) ?? 0;
+    const rightAt = checkedAt(right) ?? 0;
+    if (leftAt !== rightAt) {
+      return leftAt - rightAt;
+    }
+    if (left < right) {
+      return -1;
+    }
+    if (left > right) {
+      return 1;
+    }
+    return 0;
+  });
 }
 
 export function probeDelayMs(

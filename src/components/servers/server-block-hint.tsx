@@ -26,30 +26,34 @@ export function ServerBlockHint({
   }
   const parts = blockCheckLabelParts(badge, { tspuVotes, probeVotes });
   const label = blockCheckLabel(badge, { tspuVotes, probeVotes });
-  const title = checkedAt ? `${label} · ${formatDateTime(checkedAt)}` : label;
+  const checkedLabel = checkedAt ? formatDateTime(checkedAt) : null;
+  const title = checkedLabel ? `${label} · ${checkedLabel}` : label;
   return (
-    <a
-      href={buildDetailUrl(host)}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={label}
-      title={title}
-      className={
-        badge === "blocked"
-          ? "pointer-events-auto rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700"
-          : "pointer-events-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800"
-      }
-    >
-      {parts.tspuVotes == null || parts.probeVotes == null ? (
-        parts.base
-      ) : (
-        <>
-          {parts.base} (
-          {parts.emphasizeTspu ? <span className="text-red-700">{parts.tspuVotes}</span> : parts.tspuVotes}
-          {BLOCK_CHECK_FRACTION_SEPARATOR}
-          {parts.probeVotes})
-        </>
-      )}
-    </a>
+    <>
+      <a
+        href={buildDetailUrl(host)}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={label}
+        title={title}
+        className={
+          badge === "blocked"
+            ? "pointer-events-auto rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700"
+            : "pointer-events-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800"
+        }
+      >
+        {parts.tspuVotes == null || parts.probeVotes == null ? (
+          parts.base
+        ) : (
+          <>
+            {parts.base} (
+            {parts.emphasizeTspu ? <span className="text-red-700">{parts.tspuVotes}</span> : parts.tspuVotes}
+            {BLOCK_CHECK_FRACTION_SEPARATOR}
+            {parts.probeVotes})
+          </>
+        )}
+      </a>
+      {checkedLabel ? <span className="text-xs tabular-nums text-muted-foreground">{checkedLabel}</span> : null}
+    </>
   );
 }

@@ -8,6 +8,7 @@ import {
   BLOCK_CHECK_PROBE_GAP_MS,
   BLOCK_CHECK_RATE_LIMIT_BACKOFF_MS,
   applyObservation,
+  dueHostOrder,
   globalBackoffAfterOutcome,
   isBlockCheckEnabled,
   isHostDue,
@@ -18,11 +19,29 @@ import {
 
 const now = 1_000_000;
 
-test("isHostDue waits fifteen minutes after a successful check", () => {
+test("isHostDue waits three minutes after a successful check", () => {
   const fresh = applyObservation(undefined, { kind: "status", status: "blocked" }, now);
+  assert.equal(BLOCK_CHECK_INTERVAL_MS, 3 * 60 * 1000);
   assert.equal(isHostDue(fresh, now + BLOCK_CHECK_INTERVAL_MS - 1), false);
   assert.equal(isHostDue(fresh, now + BLOCK_CHECK_INTERVAL_MS), true);
-  assert.ok(BLOCK_CHECK_INTERVAL_MS > BLOCK_CHECK_RATE_LIMIT_BACKOFF_MS);
+});
+
+test("dueHostOrder checks never-seen and oldest addresses first", () => {
+  const checked = new Map<string, number | null>([
+    ["new.example", now],
+    ["old.example", now - 1],
+    ["fresh.example", null],
+  ]);
+  const hosts = ["new.example", "old.example", "fresh.example", "never.example"];
+  assert.deepEqual(
+    dueHostOrder(hosts, (host) => checked.get(host)),
+    ["fresh.example", "never.example", "old.example", "new.example"],
+  );
+  assert.deepEqual(hosts, ["new.example", "old.example", "fresh.example", "never.example"]);
+  assert.deepEqual(
+    dueHostOrder(["b.example", "a.example"], () => now),
+    ["a.example", "b.example"],
+  );
 });
 
 test("applyObservation keeps the previous verdict and backs off", () => {
