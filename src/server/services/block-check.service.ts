@@ -157,7 +157,11 @@ async function checkHost(
 
   state.hosts.set(host, next);
   const reason = outcome.summary ? ` reason=${outcome.summary}` : "";
-  if (outcome.statusCode != null && outcome.statusCode < 400) {
+  if (outcome.summary?.startsWith("probe-short")) {
+    console.warn(
+      `[block-check] host=${host} kept previous verdict status=${outcome.statusCode} durationMs=${outcome.durationMs}${reason}`,
+    );
+  } else if (outcome.statusCode != null && outcome.statusCode < 400) {
     console.info(
       `[block-check] host=${host} no scanner verdict status=${outcome.statusCode} durationMs=${outcome.durationMs}${reason}`,
     );

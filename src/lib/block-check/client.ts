@@ -8,8 +8,8 @@ import {
 } from "./probe-stream";
 import { BLOCK_CHECK_PROBE_TIMEOUT_MS } from "./schedule";
 import {
-  finishedProbeTotal,
   formatDisplayedVoteSummary,
+  reportedRepliesExceedParsed,
   resolveBadgeStatus,
   tspuVoteSample,
   type ProbeVote,
@@ -268,6 +268,12 @@ export async function queryCheburcheck(
       responseCount = probe.done ? probe.responseCount : null;
     }
 
+    if (reportedRepliesExceedParsed(votes.length, responseCount)) {
+      return finish("keep", null, {
+        summary: `probe-short parsed=${votes.length} response_count=${responseCount}`,
+      });
+    }
+
     const status = resolveBadgeStatus({
       registryBlocked: parsed.registryBlocked,
       isStaticCdn: parsed.isStaticCdn,
@@ -280,7 +286,7 @@ export async function queryCheburcheck(
     return finish("verdict", status, {
       summary: formatDisplayedVoteSummary(votes, parsed.isStaticCdn),
       tspuVotes: sample?.tspuVotes ?? null,
-      probeVotes: sample ? finishedProbeTotal(sample.probeVotes, responseCount) : null,
+      probeVotes: sample?.probeVotes ?? null,
     });
   } catch {
     return finish("keep", null);

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  finishedProbeTotal,
   formatDisplayedVoteSummary,
+  reportedRepliesExceedParsed,
   resolveBadgeStatus,
   selectProbeVerdict,
   tspuVoteSample,
@@ -92,13 +92,14 @@ function repeated(verdicts: string[], count: number): ProbeVote[] {
   return Array.from({ length: count }, () => vote(verdicts));
 }
 
-test("finishedProbeTotal uses this probe's response_count and ignores a smaller or huge one", () => {
-  assert.equal(finishedProbeTotal(18, 18), 18);
-  assert.equal(finishedProbeTotal(25, 25), 25);
-  assert.equal(finishedProbeTotal(5, 3), 5);
-  assert.equal(finishedProbeTotal(5, 18.5), 5);
-  assert.equal(finishedProbeTotal(5, 1001), 5);
-  assert.equal(finishedProbeTotal(5, null), 5);
+test("reportedRepliesExceedParsed is only a larger whole response_count", () => {
+  assert.equal(reportedRepliesExceedParsed(18, 18), false);
+  assert.equal(reportedRepliesExceedParsed(5, 3), false);
+  assert.equal(reportedRepliesExceedParsed(5, 18.5), false);
+  assert.equal(reportedRepliesExceedParsed(5, null), false);
+  assert.equal(reportedRepliesExceedParsed(5, 8), true);
+  assert.equal(reportedRepliesExceedParsed(5, 1001), true);
+  assert.equal(reportedRepliesExceedParsed(0, 4), true);
 });
 
 test("resolveBadgeStatus treats cdn_block on an ordinary domain as unrestricted", () => {
@@ -161,7 +162,6 @@ test("resolveBadgeStatus counts TSPU when the same scanner also reports a CDN bl
     "tspu_block=21 ok=8 uncertain=2",
   );
   assert.deepEqual(tspuVoteSample(unitedKingdom, false), { tspuVotes: 21, probeVotes: 31 });
-  assert.equal(finishedProbeTotal(31, 31), 31);
 });
 
 test("resolveBadgeStatus keeps a real TSPU majority and a tie", () => {

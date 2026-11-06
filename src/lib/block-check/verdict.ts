@@ -50,20 +50,9 @@ function chosenDisplayVerdict(vote: ProbeVote, isStaticCdn: boolean): DisplayVer
   return VERDICT_PRIORITY.find((candidate) => displayVerdicts(vote, isStaticCdn).includes(candidate)) ?? null;
 }
 
-const MAX_PROBE_VOTES = 1000;
-
-/** Size of this finished probe. response_count wins only when it covers every parsed vote. */
-export function finishedProbeTotal(voteCount: number, responseCount: number | null): number {
-  if (
-    responseCount != null &&
-    Number.isInteger(responseCount) &&
-    responseCount >= 1 &&
-    responseCount <= MAX_PROBE_VOTES &&
-    responseCount >= voteCount
-  ) {
-    return responseCount;
-  }
-  return voteCount;
+/** The probe counted more replies than this poll parsed. Missing replies are not unblocked nodes. */
+export function reportedRepliesExceedParsed(parsedReplies: number, responseCount: number | null): boolean {
+  return typeof responseCount === "number" && Number.isInteger(responseCount) && responseCount > parsedReplies;
 }
 
 /** TSPU-blocking scanners over every scanner result in the finished probe. */

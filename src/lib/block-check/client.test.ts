@@ -258,7 +258,7 @@ test("queryCheburcheck marks a registry block when the probe request fails", asy
   assert.equal(outcome.probeVotes, null);
 });
 
-test("queryCheburcheck sizes the TSPU fraction from this probe's response_count", async () => {
+test("queryCheburcheck keeps the parsed reply count when response_count matches", async () => {
   const check = (body: string) =>
     queryCheburcheck("vpn.example.com", {
       fetchImpl: async (input) => {
@@ -310,6 +310,23 @@ test("queryCheburcheck ignores a response_count smaller than the parsed votes", 
   });
   assert.equal(outcome.tspuVotes, 1);
   assert.equal(outcome.probeVotes, 5);
+});
+
+test("queryCheburcheck keeps the previous snapshot when response_count exceeds parsed replies", async () => {
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: true, id: PROBE_ID });
+      }
+      return sseResponse(probeEvents(5, 4, 8, 31));
+    },
+  });
+  assert.equal(outcome.kind, "keep");
+  assert.equal(outcome.status, null);
+  assert.equal(outcome.tspuVotes, null);
+  assert.equal(outcome.probeVotes, null);
+  assert.equal(outcome.summary, "probe-short parsed=5 response_count=8");
 });
 
 test("queryCheburcheck keeps a non-200 check", async () => {
