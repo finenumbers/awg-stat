@@ -5,7 +5,8 @@ import {
   blockCheckLabelParts,
 } from "@/lib/block-check/label";
 import { buildDetailUrl } from "@/lib/block-check/probe-stream";
-import { formatDateTime } from "@/lib/utils";
+import { isBlockCheckStale } from "@/lib/block-check/schedule";
+import { cn, formatDateTime } from "@/lib/utils";
 
 export function ServerBlockHint({
   status,
@@ -27,6 +28,7 @@ export function ServerBlockHint({
   const parts = blockCheckLabelParts(badge, { tspuVotes, probeVotes });
   const label = blockCheckLabel(badge, { tspuVotes, probeVotes });
   const checkedLabel = checkedAt ? formatDateTime(checkedAt) : null;
+  const stale = checkedAt != null && isBlockCheckStale(checkedAt, Date.now());
   const title = checkedLabel ? `${label} · ${checkedLabel}` : label;
   return (
     <>
@@ -53,7 +55,9 @@ export function ServerBlockHint({
           </>
         )}
       </a>
-      {checkedLabel ? <span className="text-xs tabular-nums text-muted-foreground">{checkedLabel}</span> : null}
+      {checkedLabel ? (
+        <span className={cn("text-xs tabular-nums text-muted-foreground", stale && "opacity-60")}>{checkedLabel}</span>
+      ) : null}
     </>
   );
 }

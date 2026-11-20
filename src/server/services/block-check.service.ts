@@ -11,6 +11,7 @@ import {
   type HostBlockState,
 } from "@/lib/block-check/schedule";
 import { blockCheckHostKey, canQueryBlockCheckHost } from "@/lib/block-check/target";
+import { readBlockCheckToken } from "@/lib/block-check/token";
 import { db } from "@/lib/db";
 import { canCommitPoll } from "@/lib/ssh/errors";
 import { getPollerEpoch, isPollerStopping } from "@/server/poller-runtime";
@@ -39,6 +40,17 @@ const state: BlockCheckState = {
   backoffUntil: 0,
   lastProbeStartedAt: 0,
 };
+
+const noted = new Set<string>();
+const skippedHosts = new Set<string>();
+
+function noteOnce(key: string, message: string): void {
+  if (noted.has(key)) {
+    return;
+  }
+  noted.add(key);
+  console.warn(message);
+}
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (ms <= 0) {
@@ -112,9 +124,11 @@ async function checkHost(
   servers: ServerBlockRow[],
   startedEpoch: number | null,
   signal: AbortSignal,
-): Promise<{ statusCode: number | null; kind: "verdict" | "keep" }> {
+  token: string,
+): Promise<{ statusCode: number | null; kind: "verdict" | "keep"; summary: string }> {
   const outcome = await queryCheburcheck(host, {
     signal,
+    token,
     beforeProbe: async () => {
       const delay = probeDelayMs(state.lastProbeStartedAt, Date.now());
       if (delay > 0) {
@@ -128,7 +142,7 @@ async function checkHost(
   });
 
   if (signal.aborted || !canWrite(startedEpoch)) {
-    return { statusCode: outcome.statusCode, kind: "keep" };
+    return { statusCode: outcome.statusCode, kind: "keep", summary: outcome.summary };
   }
 
   const next = applyObservation(
@@ -153,12 +167,12 @@ async function checkHost(
     console.info(
       `[block-check] host=${host} verdict=${outcome.status} status=${outcome.statusCode} durationMs=${outcome.durationMs}${votes}${sample}`,
     );
-    return { statusCode: outcome.statusCode, kind: "verdict" };
+    return { statusCode: outcome.statusCode, kind: "verdict", summary: outcome.summary };
   }
 
   state.hosts.set(host, next);
   const reason = outcome.summary ? ` reason=${outcome.summary}` : "";
-  if (outcome.summary?.startsWith("probe-short")) {
+  if (outcome.summary.startsWith("probe-")) {
     console.warn(
       `[block-check] host=${host} kept previous verdict status=${outcome.statusCode} durationMs=${outcome.durationMs}${reason}`,
     );
@@ -171,15 +185,26 @@ async function checkHost(
       `[block-check] host=${host} kept previous verdict status=${outcome.statusCode} durationMs=${outcome.durationMs}${reason}`,
     );
   }
-  return { statusCode: outcome.statusCode, kind: "keep" };
+  return { statusCode: outcome.statusCode, kind: "keep", summary: outcome.summary };
 }
 
-async function refresh(startedEpoch: number | null, signal: AbortSignal): Promise<void> {
+async function refresh(startedEpoch: number | null, signal: AbortSignal, token: string): Promise<void> {
   try {
     const servers = await db.server.findMany({
       select: { id: true, host: true, lastBlockStatus: true, lastBlockCheckedAt: true },
       orderBy: { name: "asc" },
     });
+    for (const server of servers) {
+      if (canQueryBlockCheckHost(server.host)) {
+        continue;
+      }
+      const key = blockCheckHostKey(server.host);
+      if (skippedHosts.has(key)) {
+        continue;
+      }
+      skippedHosts.add(key);
+      console.info(`[block-check] host skipped reason=not-public host=${key}`);
+    }
     const hosts = [
       ...new Set(
         servers
@@ -208,7 +233,7 @@ async function refresh(startedEpoch: number | null, signal: AbortSignal): Promis
       if (signal.aborted || !canWrite(startedEpoch)) {
         break;
       }
-      const result = await checkHost(host, servers, startedEpoch, signal);
+      const result = await checkHost(host, servers, startedEpoch, signal, token);
       if (signal.aborted || !canWrite(startedEpoch)) {
         break;
       }
@@ -224,10 +249,17 @@ async function refresh(startedEpoch: number | null, signal: AbortSignal): Promis
       const backoff = globalBackoffAfterOutcome({
         statusCode: result.statusCode,
         consecutiveOutboundKeeps,
+        summary: result.summary,
       });
       if (backoff != null) {
         state.backoffUntil = Date.now() + backoff;
-        console.warn(`[block-check] global backoff ${backoff}ms after status=${result.statusCode}`);
+        if (result.summary === "probe-unauthorized") {
+          console.warn(
+            `[block-check] probe unauthorized; global backoff ${backoff}ms; https://cheburcheck.ru/kb/api#authorization`,
+          );
+        } else {
+          console.warn(`[block-check] global backoff ${backoff}ms after status=${result.statusCode}`);
+        }
         break;
       }
     }
@@ -240,6 +272,21 @@ async function refresh(startedEpoch: number | null, signal: AbortSignal): Promis
 
 export function ensureBlockCheckRefresh(now = Date.now()): void {
   if (!isBlockCheckEnabled()) {
+    return;
+  }
+  const token = readBlockCheckToken(process.env.GATE_CHEBURCHECK_TOKEN);
+  if (token.kind === "missing") {
+    noteOnce(
+      "token-missing",
+      "[block-check] GATE_CHEBURCHECK_TOKEN is empty, scanner probes are not started",
+    );
+    return;
+  }
+  if (token.kind === "invalid") {
+    noteOnce(
+      "token-invalid",
+      "[block-check] GATE_CHEBURCHECK_TOKEN is unusable, scanner probes are not started",
+    );
     return;
   }
   if (isPollerStopping() || getPollerEpoch() == null) {
@@ -258,7 +305,7 @@ export function ensureBlockCheckRefresh(now = Date.now()): void {
   const startedEpoch = getPollerEpoch();
   const abort = new AbortController();
   state.abort = abort;
-  const flight = refresh(startedEpoch, abort.signal).finally(() => {
+  const flight = refresh(startedEpoch, abort.signal, token.value).finally(() => {
     if (state.inflight === flight) {
       state.inflight = null;
     }

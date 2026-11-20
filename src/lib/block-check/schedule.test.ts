@@ -7,10 +7,12 @@ import {
   BLOCK_CHECK_OUTBOUND_FAIL_LIMIT,
   BLOCK_CHECK_PROBE_GAP_MS,
   BLOCK_CHECK_RATE_LIMIT_BACKOFF_MS,
+  BLOCK_CHECK_STALE_MS,
   applyObservation,
   dueHostOrder,
   globalBackoffAfterOutcome,
   isBlockCheckEnabled,
+  isBlockCheckStale,
   isHostDue,
   isOutboundKeep,
   probeDelayMs,
@@ -98,4 +100,37 @@ test("globalBackoffAfterOutcome treats 429 as a five-minute pause", () => {
     globalBackoffAfterOutcome({ statusCode: null, consecutiveOutboundKeeps: 1 }),
     null,
   );
+  assert.equal(
+    globalBackoffAfterOutcome({
+      statusCode: 403,
+      consecutiveOutboundKeeps: 0,
+      summary: "probe-unauthorized",
+    }),
+    BLOCK_CHECK_RATE_LIMIT_BACKOFF_MS,
+  );
+  assert.equal(
+    globalBackoffAfterOutcome({
+      statusCode: 401,
+      consecutiveOutboundKeeps: 0,
+      summary: "probe-unauthorized",
+    }),
+    BLOCK_CHECK_RATE_LIMIT_BACKOFF_MS,
+  );
+  assert.equal(
+    globalBackoffAfterOutcome({
+      statusCode: 403,
+      consecutiveOutboundKeeps: 0,
+      summary: "probe-forbidden",
+    }),
+    null,
+  );
+});
+
+test("isBlockCheckStale starts at thirty minutes", () => {
+  assert.equal(BLOCK_CHECK_STALE_MS, 30 * 60 * 1000);
+  assert.equal(isBlockCheckStale(null, now), false);
+  assert.equal(isBlockCheckStale(undefined, now), false);
+  assert.equal(isBlockCheckStale(now - BLOCK_CHECK_STALE_MS + 1, now), false);
+  assert.equal(isBlockCheckStale(now - BLOCK_CHECK_STALE_MS, now), true);
+  assert.equal(isBlockCheckStale(new Date(now - BLOCK_CHECK_STALE_MS), now), true);
 });

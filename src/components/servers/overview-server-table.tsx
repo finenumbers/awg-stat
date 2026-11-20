@@ -7,6 +7,7 @@ import {
   blockCheckLabelParts,
 } from "@/lib/block-check/label";
 import { buildDetailUrl } from "@/lib/block-check/probe-stream";
+import { isBlockCheckStale } from "@/lib/block-check/schedule";
 import { ICMP_TABLE_UNAVAILABLE_LABEL } from "@/lib/latency";
 import type { PresenceTone } from "@/lib/presence";
 import { RX_COLOR, TX_COLOR } from "@/lib/traffic-colors";
@@ -183,7 +184,12 @@ export function OverviewServerTable({ rows }: { rows: OverviewServerRow[] }) {
               <td className="border-b p-0 whitespace-nowrap">
                 <BlockCell row={row} />
               </td>
-              <td className="border-b px-3 py-2 text-right whitespace-nowrap tabular-nums">
+              <td
+                className={cn(
+                  "border-b px-3 py-2 text-right whitespace-nowrap tabular-nums",
+                  row.blockCheckedAt && isBlockCheckStale(row.blockCheckedAt, Date.now()) && "text-muted-foreground",
+                )}
+              >
                 {row.blockCheckedAt ? (
                   formatDateTime(row.blockCheckedAt)
                 ) : (

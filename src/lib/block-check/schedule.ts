@@ -1,9 +1,12 @@
 export const BLOCK_CHECK_INTERVAL_MS = 3 * 60 * 1000;
 export const BLOCK_CHECK_BACKOFF_MS = 60_000;
-export const BLOCK_CHECK_PROBE_GAP_MS = 12_000;
-export const BLOCK_CHECK_PROBE_TIMEOUT_MS = 45_000;
+/** Free Cheburcheck keys accept one probe each 12s. Stay clear of that edge. */
+export const BLOCK_CHECK_PROBE_GAP_MS = 15_000;
+/** Outlive Cheburcheck's task timer so a finished probe is not stored as incomplete. */
+export const BLOCK_CHECK_PROBE_TIMEOUT_MS = 75_000;
 export const BLOCK_CHECK_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000;
 export const BLOCK_CHECK_OUTBOUND_FAIL_LIMIT = 3;
+export const BLOCK_CHECK_STALE_MS = 30 * 60 * 1000;
 
 export type HostBlockState = {
   status: "unrestricted" | "blocked" | null;
@@ -101,10 +104,25 @@ export function isOutboundKeep(statusCode: number | null): boolean {
   return statusCode == null || statusCode >= 500 || statusCode === 429;
 }
 
+export function isBlockCheckStale(checkedAt: number | Date | null | undefined, now: number): boolean {
+  if (checkedAt == null) {
+    return false;
+  }
+  const at = checkedAt instanceof Date ? checkedAt.getTime() : checkedAt;
+  if (!Number.isFinite(at)) {
+    return false;
+  }
+  return now - at >= BLOCK_CHECK_STALE_MS;
+}
+
 export function globalBackoffAfterOutcome(input: {
   statusCode: number | null;
   consecutiveOutboundKeeps: number;
+  summary?: string;
 }): number | null {
+  if (input.summary === "probe-unauthorized") {
+    return BLOCK_CHECK_RATE_LIMIT_BACKOFF_MS;
+  }
   if (input.statusCode === 429) {
     return BLOCK_CHECK_RATE_LIMIT_BACKOFF_MS;
   }

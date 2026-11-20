@@ -361,6 +361,118 @@ test("queryCheburcheck keeps a timeout or abort", async () => {
   assert.equal(outcome.status, null);
 });
 
+function authorizationOf(init?: RequestInit): string | null {
+  const headers = init?.headers;
+  if (!headers) {
+    return null;
+  }
+  if (headers instanceof Headers) {
+    return headers.get("authorization");
+  }
+  if (Array.isArray(headers)) {
+    const found = headers.find(([name]) => name.toLowerCase() === "authorization");
+    return found?.[1] ?? null;
+  }
+  const record = headers as Record<string, string>;
+  return record.Authorization ?? record.authorization ?? null;
+}
+
+test("queryCheburcheck sends the bearer token only on the probe request", async () => {
+  const seen: Array<{ url: string; authorization: string | null }> = [];
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    token: "secret-token",
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      seen.push({ url, authorization: authorizationOf(init) });
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: false, id: PROBE_ID });
+      }
+      return sseResponse(
+        'event:result\ndata:{"verdicts":["ok"],"probe_id":"1","host_results":[{}]}\n\nevent:done\ndata:{"response_count":1}\n\n',
+      );
+    },
+  });
+  assert.equal(outcome.kind, "verdict");
+  assert.equal(outcome.status, "unrestricted");
+  assert.equal(seen[0]?.authorization, null);
+  assert.equal(seen[1]?.authorization, "Bearer secret-token");
+  assert.equal(seen[1]?.url.includes("secret-token"), false);
+  assert.equal(seen[1]?.url.includes("token="), false);
+});
+
+test("queryCheburcheck keeps a registry block when the probe asks for an API token", async () => {
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    token: "secret-token",
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: true, id: PROBE_ID });
+      }
+      return jsonResponse(
+        {
+          code: 403,
+          documentation_url: "https://cheburcheck.ru/kb/api#authorization",
+          info: "Для запуска сканеров необходим API-токен.",
+        },
+        403,
+      );
+    },
+  });
+  assert.equal(outcome.kind, "keep");
+  assert.equal(outcome.status, null);
+  assert.equal(outcome.statusCode, 403);
+  assert.equal(outcome.summary, "probe-unauthorized");
+  assert.equal(outcome.tspuVotes, null);
+  assert.equal(outcome.probeVotes, null);
+});
+
+test("queryCheburcheck keeps a 401 probe without turning the registry into a verdict", async () => {
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: true, id: PROBE_ID });
+      }
+      return new Response(null, { status: 401 });
+    },
+  });
+  assert.equal(outcome.kind, "keep");
+  assert.equal(outcome.summary, "probe-unauthorized");
+  assert.equal(outcome.status, null);
+});
+
+test("queryCheburcheck keeps a forbidden target when the registry is blocked", async () => {
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: true, id: PROBE_ID });
+      }
+      return jsonResponse({ code: 403, info: "Forbidden" }, 403);
+    },
+  });
+  assert.equal(outcome.kind, "keep");
+  assert.equal(outcome.summary, "probe-forbidden");
+  assert.equal(outcome.status, null);
+});
+
+test("queryCheburcheck keeps a probe body that exceeds the read cap", async () => {
+  const vote = 'event:result\ndata:{"verdicts":["tspu_block"],"probe_id":"1","host_results":[{}]}\n\n';
+  const outcome = await queryCheburcheck("vpn.example.com", {
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("/api/v1/check")) {
+        return jsonResponse({ blocked: true, id: PROBE_ID });
+      }
+      return sseChunks([vote, "x".repeat(4_000_001)]);
+    },
+  });
+  assert.equal(outcome.kind, "keep");
+  assert.equal(outcome.status, null);
+  assert.equal(outcome.summary, "probe-truncated");
+  assert.equal(outcome.tspuVotes, null);
+});
+
 test("queryCheburcheck returns keep when the caller already aborted", async () => {
   const abort = new AbortController();
   abort.abort();

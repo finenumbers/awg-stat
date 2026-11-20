@@ -16,7 +16,8 @@ import {
 } from "./verdict";
 
 const CHECK_TIMEOUT_MS = 15_000;
-const MAX_BODY_BYTES = 1_000_000;
+const MAX_BODY_BYTES = 4_000_000;
+const MAX_ERROR_BODY_BYTES = 4_096;
 const USER_AGENT = "awg-stat";
 
 export type CheckOutcome = {
@@ -102,25 +103,48 @@ async function readLimitedText(response: Response, maxBytes: number): Promise<st
   return text;
 }
 
+type ProbeRead = {
+  votes: SseProbeVote[];
+  failed: boolean;
+  done: boolean;
+  truncated: boolean;
+  statusCode: number | null;
+  responseCount: number | null;
+  errorBody: string | null;
+};
+
+function isProbeAuthDenied(statusCode: number | null, errorBody: string | null): boolean {
+  if (statusCode === 401) {
+    return true;
+  }
+  if (statusCode !== 403 || !errorBody) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(errorBody) as { documentation_url?: unknown };
+    return typeof parsed.documentation_url === "string" && parsed.documentation_url.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function readProbeVotes(
   url: string,
   fetchImpl: typeof fetch,
   signal?: AbortSignal,
-): Promise<{
-  votes: SseProbeVote[];
-  failed: boolean;
-  done: boolean;
-  statusCode: number | null;
-  responseCount: number | null;
-}> {
+  token?: string,
+): Promise<ProbeRead> {
   const votes: SseProbeVote[] = [];
   let statusCode: number | null = null;
-  const unfinished = (failed: boolean) => ({
+  let truncated = false;
+  const unfinished = (failed: boolean): ProbeRead => ({
     votes,
     failed,
     done: false,
+    truncated,
     statusCode,
     responseCount: null,
+    errorBody: null,
   });
   try {
     const response = await fetchImpl(url, {
@@ -131,9 +155,21 @@ async function readProbeVotes(
       headers: {
         Accept: "text/event-stream",
         "User-Agent": USER_AGENT,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
     statusCode = response.status;
+    if (response.status === 401 || response.status === 403) {
+      return {
+        votes,
+        failed: true,
+        done: false,
+        truncated: false,
+        statusCode,
+        responseCount: null,
+        errorBody: await readLimitedText(response, MAX_ERROR_BODY_BYTES),
+      };
+    }
     if (response.status !== 200 || !response.body) {
       return unfinished(true);
     }
@@ -161,8 +197,10 @@ async function readProbeVotes(
                 votes,
                 failed: false,
                 done: true,
+                truncated: false,
                 statusCode,
                 responseCount: parsed.responseCount,
+                errorBody: null,
               };
             }
           }
@@ -170,6 +208,7 @@ async function readProbeVotes(
         }
         received += value.byteLength;
         if (received > MAX_BODY_BYTES) {
+          truncated = true;
           break;
         }
         buffer += decoder.decode(value, { stream: true });
@@ -178,7 +217,15 @@ async function readProbeVotes(
         const parsed = votesFromSseEvents(consumed.events);
         votes.push(...parsed.votes);
         if (parsed.done) {
-          return { votes, failed: false, done: true, statusCode, responseCount: parsed.responseCount };
+          return {
+            votes,
+            failed: false,
+            done: true,
+            truncated: false,
+            statusCode,
+            responseCount: parsed.responseCount,
+            errorBody: null,
+          };
         }
       }
     } finally {
@@ -193,7 +240,12 @@ async function readProbeVotes(
 
 export async function queryCheburcheck(
   host: string,
-  options: { fetchImpl?: typeof fetch; beforeProbe?: () => Promise<void>; signal?: AbortSignal } = {},
+  options: {
+    fetchImpl?: typeof fetch;
+    beforeProbe?: () => Promise<void>;
+    signal?: AbortSignal;
+    token?: string;
+  } = {},
 ): Promise<CheckOutcome> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const started = Date.now();
@@ -256,8 +308,17 @@ export async function queryCheburcheck(
       if (options.signal?.aborted) {
         return finish("keep", null);
       }
-      const probe = await readProbeVotes(probeUrl, fetchImpl, options.signal);
+      const probe = await readProbeVotes(probeUrl, fetchImpl, options.signal, options.token);
       statusCode = probe.statusCode ?? statusCode;
+      if (isProbeAuthDenied(probe.statusCode, probe.errorBody)) {
+        return finish("keep", null, { summary: "probe-unauthorized" });
+      }
+      if (probe.statusCode === 403) {
+        return finish("keep", null, { summary: "probe-forbidden" });
+      }
+      if (probe.truncated) {
+        return finish("keep", null, { summary: "probe-truncated" });
+      }
       if (!probe.done && probe.votes.length > 0) {
         return finish("keep", null, { summary: "probe-incomplete" });
       }
